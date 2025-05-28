@@ -1,0 +1,21 @@
+# Binaries
+hello-go
+*.exe
+*.dll
+*.so
+
+# Vendor folder (if vendored)
+vendor/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+
+# Test coverage output
+coverage.out
+
+# OS files
+.DS_Store
+Thumbs.db
+
