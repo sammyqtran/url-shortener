@@ -256,10 +256,6 @@ func TestGetHandler(t *testing.T) {
 		},
 	}
 
-	// codeToURL = map[string]string{
-	// 	"abc123": "https://example.com",
-	// }
-
 	for _, tc := range tests {
 
 		t.Run(tc.name, func(t *testing.T) {
@@ -291,30 +287,3 @@ func TestGetHandler(t *testing.T) {
 	}
 
 }
-
-// codeToURL = map[string]string{
-// 	"abc123": "https://example.com",
-// }
-
-// URLtoCode = map[string]string{
-// 	"https://example.com": "abc123",
-// }
-
-// inputJSON := `{"url": "https://example.com"}`
-
-// t.Run("Duplicate URL", func(t *testing.T) {
-// 	req := httptest.NewRequest(http.MethodPost, "/post", strings.NewReader(inputJSON))
-// 	req.Header.Set("Content-Type", "application/json")
-// 	rr := httptest.NewRecorder()
-
-// 	postHandler(rr, req)
-
-// 	if rr.Header().Get("Content-Type") != "application/json" {
-// 		t.Fatalf("expected content-type application/json got %s", rr.Header().Get("Content-Type"))
-// 	}
-
-// 	if (rr.Code) != http.StatusOK {
-// 		t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
-// 	}
-// 	t.Cleanup(func() { codeToURL = map[string]string{}; URLtoCode = map[string]string{} })
-// })
