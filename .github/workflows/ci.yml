@@ -2,7 +2,7 @@ name: Go CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, persistence-concurrency ]
   pull_request:
     branches: [ main ]
 
