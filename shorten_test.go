@@ -7,14 +7,13 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/go-redis/redismock/v9"
 )
 
 func TestMain(m *testing.M) {
 
 	// Global setup
-	codeToURL = make(map[string]string)
-	URLtoCode = make(map[string]string)
-
 	code := m.Run()
 
 	// Global teardown if needed
@@ -86,7 +85,7 @@ func TestPostHandler(t *testing.T) {
 		URL string `json:"url"`
 	}
 	type urlResponse struct {
-		ShortCode string `json:"short_code"`
+		ShortCode string `json:"shortcode"`
 	}
 
 	tests := []struct {
@@ -101,6 +100,16 @@ func TestPostHandler(t *testing.T) {
 			inputJSON:      `{"url": "https://example.com"}`,
 			expectedStatus: http.StatusOK,
 			expectError:    false,
+			setup: func() {
+				db, mock := redismock.NewClientMock()
+				rdb = db // assign your global client
+				mock.ExpectGet("url:https://example.com").RedisNil()
+				mock.ExpectGet("shortcode:abc123").RedisNil()
+				mock.ExpectSet("shortcode:abc123", "https://example.com", 0).SetVal("OK")
+				mock.ExpectSet("url:https://example.com", "abc123", 0).SetVal("OK")
+				mock.ExpectGet("shortcode:abc123").SetVal("https://example.com")
+
+			},
 		},
 		{
 			name:           "missing URL field",
@@ -120,23 +129,32 @@ func TestPostHandler(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			expectError:    false,
 			setup: func() {
-				codeToURL["existingcode"] = "https://example.com"
-				URLtoCode["https://example.com"] = "existingcode"
+				db, mock := redismock.NewClientMock()
+				rdb = db // assign your global client
+				mock.ExpectGet("url:https://example.com").SetVal("existingcode")
+				mock.ExpectGet("shortcode:existingcode").SetVal("https://example.com")
 			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+
 			if tc.setup != nil {
 				tc.setup()
 			}
+
+			shortCodeGenerator = func(n int) string {
+				return "abc123"
+			}
+
 			req := httptest.NewRequest(http.MethodPost, "/post", strings.NewReader(tc.inputJSON))
 			req.Header.Set("Content-Type", "application/json")
 			rr := httptest.NewRecorder()
 
 			postHandler(rr, req)
 
+			// check response code
 			if (rr.Code) != tc.expectedStatus {
 				t.Errorf("expected status %d, got %d", tc.expectedStatus, rr.Code)
 			}
@@ -161,7 +179,13 @@ func TestPostHandler(t *testing.T) {
 				t.Fatalf("failed to unmarshal inputJSON: %v", err)
 			}
 
-			mappedURL, exists := codeToURL[jsonResponse.ShortCode]
+			mappedURL, exists, err := getURL(jsonResponse.ShortCode)
+
+			if err != nil {
+				t.Fatalf("err %s found in mock redis call", err)
+
+			}
+
 			if !exists {
 				t.Fatalf("shortcode %s not found in codeToURL map", jsonResponse.ShortCode)
 			}
@@ -169,7 +193,8 @@ func TestPostHandler(t *testing.T) {
 				t.Errorf("expected mapped URL %s, got %s", reqData.URL, mappedURL)
 			}
 
-			t.Cleanup(func() { codeToURL = map[string]string{}; URLtoCode = map[string]string{} })
+			// t.Cleanup(func() { })
+			defer func() { shortCodeGenerator = generateShortCode }() // Reset after test
 		})
 
 	}
@@ -185,6 +210,7 @@ func TestGetHandler(t *testing.T) {
 		expectedStatus int
 		expectError    bool
 		expectRedirect bool
+		setup          func()
 	}{
 		{
 			name:           "valid shortcode",
@@ -193,6 +219,12 @@ func TestGetHandler(t *testing.T) {
 			expectedStatus: http.StatusFound,
 			expectError:    false,
 			expectRedirect: true,
+			setup: func() {
+				db, mock := redismock.NewClientMock()
+				rdb = db // assign your global client
+
+				mock.ExpectGet("shortcode:abc123").SetVal("https://example.com")
+			},
 		},
 		{
 			name:           "empty shortcode",
@@ -201,6 +233,12 @@ func TestGetHandler(t *testing.T) {
 			expectedStatus: http.StatusNotFound,
 			expectError:    false,
 			expectRedirect: false,
+			setup: func() {
+				db, mock := redismock.NewClientMock()
+				rdb = db // assign your global client
+
+				mock.ExpectGet("shortcode:").RedisNil()
+			},
 		},
 		{
 			name:           "invalid shortcode",
@@ -209,16 +247,27 @@ func TestGetHandler(t *testing.T) {
 			expectedStatus: http.StatusNotFound,
 			expectError:    false,
 			expectRedirect: false,
+			setup: func() {
+				db, mock := redismock.NewClientMock()
+				rdb = db // assign your global client
+
+				mock.ExpectGet("shortcode:def456").RedisNil()
+			},
 		},
 	}
 
-	codeToURL = map[string]string{
-		"abc123": "https://example.com",
-	}
+	// codeToURL = map[string]string{
+	// 	"abc123": "https://example.com",
+	// }
 
 	for _, tc := range tests {
 
 		t.Run(tc.name, func(t *testing.T) {
+
+			if tc.setup != nil {
+				tc.setup()
+			}
+
 			req := httptest.NewRequest("GET", "/get/"+tc.shortcode, nil)
 			w := httptest.NewRecorder()
 
@@ -236,7 +285,7 @@ func TestGetHandler(t *testing.T) {
 					t.Errorf("Expected redirect to %s, got %s", tc.originalURL, loc.String())
 				}
 			}
-			t.Cleanup(func() { codeToURL = map[string]string{}; URLtoCode = map[string]string{} })
+			// t.Cleanup(func() { codeToURL = map[string]string{}; URLtoCode = map[string]string{} })
 		})
 
 	}
