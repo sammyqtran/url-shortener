@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -23,10 +24,18 @@ func TestMain(m *testing.M) {
 
 func TestPingHandler(t *testing.T) {
 
+	db, _ := redismock.NewClientMock()
+
+	redisClient := &RedisClient{
+		client: db,
+		ctx:    context.Background(),
+	}
+	handler := &Handler{Redis: redisClient}
+
 	req := httptest.NewRequest("GET", "/ping", nil)
 	w := httptest.NewRecorder()
 
-	pingHandler(w, req)
+	handler.pingHandler(w, req)
 	resp := w.Result()
 
 	if resp.StatusCode != http.StatusOK {
@@ -93,16 +102,14 @@ func TestPostHandler(t *testing.T) {
 		inputJSON      string
 		expectedStatus int
 		expectError    bool
-		setup          func()
+		setup          func(mock redismock.ClientMock)
 	}{
 		{
 			name:           "valid URL",
 			inputJSON:      `{"url": "https://example.com"}`,
 			expectedStatus: http.StatusOK,
 			expectError:    false,
-			setup: func() {
-				db, mock := redismock.NewClientMock()
-				rdb = db // assign your global client
+			setup: func(mock redismock.ClientMock) {
 				mock.ExpectGet("url:https://example.com").RedisNil()
 				mock.ExpectGet("shortcode:abc123").RedisNil()
 				mock.ExpectSet("shortcode:abc123", "https://example.com", 0).SetVal("OK")
@@ -128,9 +135,7 @@ func TestPostHandler(t *testing.T) {
 			inputJSON:      `{"url": "https://example.com"}`,
 			expectedStatus: http.StatusOK,
 			expectError:    false,
-			setup: func() {
-				db, mock := redismock.NewClientMock()
-				rdb = db // assign your global client
+			setup: func(mock redismock.ClientMock) {
 				mock.ExpectGet("url:https://example.com").SetVal("existingcode")
 				mock.ExpectGet("shortcode:existingcode").SetVal("https://example.com")
 			},
@@ -140,10 +145,14 @@ func TestPostHandler(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 
+			db, mock := redismock.NewClientMock()
 			if tc.setup != nil {
-				tc.setup()
+				tc.setup(mock)
 			}
+			redisClient := &RedisClient{client: db, ctx: context.Background()}
+			handler := &Handler{Redis: redisClient}
 
+			defer func() { shortCodeGenerator = generateShortCode }() // Reset after test
 			shortCodeGenerator = func(n int) string {
 				return "abc123"
 			}
@@ -152,7 +161,7 @@ func TestPostHandler(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			rr := httptest.NewRecorder()
 
-			postHandler(rr, req)
+			handler.postHandler(rr, req)
 
 			// check response code
 			if (rr.Code) != tc.expectedStatus {
@@ -179,7 +188,7 @@ func TestPostHandler(t *testing.T) {
 				t.Fatalf("failed to unmarshal inputJSON: %v", err)
 			}
 
-			mappedURL, exists, err := getURL(jsonResponse.ShortCode)
+			mappedURL, exists, err := handler.Redis.getURL(jsonResponse.ShortCode)
 
 			if err != nil {
 				t.Fatalf("err %s found in mock redis call", err)
@@ -194,7 +203,7 @@ func TestPostHandler(t *testing.T) {
 			}
 
 			// t.Cleanup(func() { })
-			defer func() { shortCodeGenerator = generateShortCode }() // Reset after test
+
 		})
 
 	}
@@ -210,7 +219,7 @@ func TestGetHandler(t *testing.T) {
 		expectedStatus int
 		expectError    bool
 		expectRedirect bool
-		setup          func()
+		setup          func(mock redismock.ClientMock)
 	}{
 		{
 			name:           "valid shortcode",
@@ -219,10 +228,7 @@ func TestGetHandler(t *testing.T) {
 			expectedStatus: http.StatusFound,
 			expectError:    false,
 			expectRedirect: true,
-			setup: func() {
-				db, mock := redismock.NewClientMock()
-				rdb = db // assign your global client
-
+			setup: func(mock redismock.ClientMock) {
 				mock.ExpectGet("shortcode:abc123").SetVal("https://example.com")
 			},
 		},
@@ -233,10 +239,7 @@ func TestGetHandler(t *testing.T) {
 			expectedStatus: http.StatusNotFound,
 			expectError:    false,
 			expectRedirect: false,
-			setup: func() {
-				db, mock := redismock.NewClientMock()
-				rdb = db // assign your global client
-
+			setup: func(mock redismock.ClientMock) {
 				mock.ExpectGet("shortcode:").RedisNil()
 			},
 		},
@@ -247,10 +250,7 @@ func TestGetHandler(t *testing.T) {
 			expectedStatus: http.StatusNotFound,
 			expectError:    false,
 			expectRedirect: false,
-			setup: func() {
-				db, mock := redismock.NewClientMock()
-				rdb = db // assign your global client
-
+			setup: func(mock redismock.ClientMock) {
 				mock.ExpectGet("shortcode:def456").RedisNil()
 			},
 		},
@@ -260,14 +260,18 @@ func TestGetHandler(t *testing.T) {
 
 		t.Run(tc.name, func(t *testing.T) {
 
+			db, mock := redismock.NewClientMock()
+
 			if tc.setup != nil {
-				tc.setup()
+				tc.setup(mock)
 			}
+			redisClient := &RedisClient{client: db, ctx: context.Background()}
+			handler := &Handler{Redis: redisClient}
 
 			req := httptest.NewRequest("GET", "/get/"+tc.shortcode, nil)
 			w := httptest.NewRecorder()
 
-			getHandler(w, req)
+			handler.getHandler(w, req)
 
 			resp := w.Result()
 			if resp.StatusCode != tc.expectedStatus {
@@ -281,7 +285,66 @@ func TestGetHandler(t *testing.T) {
 					t.Errorf("Expected redirect to %s, got %s", tc.originalURL, loc.String())
 				}
 			}
-			// t.Cleanup(func() { codeToURL = map[string]string{}; URLtoCode = map[string]string{} })
+		})
+
+	}
+
+}
+
+func TestAnalyticsHandler(t *testing.T) {
+
+	tests := []struct {
+		name           string
+		shortcode      string
+		expectedStatus int
+		expectError    bool
+		setup          func(mock redismock.ClientMock)
+	}{
+		{
+			name:           "Valid Link",
+			shortcode:      "abc123",
+			expectedStatus: http.StatusOK,
+			expectError:    false,
+			setup: func(mock redismock.ClientMock) {
+				mock.ExpectGet("clicks:abc123").SetVal("1")
+			},
+		},
+		{
+			name:           "No Short Code",
+			shortcode:      "",
+			expectedStatus: http.StatusBadRequest,
+			expectError:    true,
+		},
+	}
+
+	for _, tc := range tests {
+
+		t.Run(tc.name, func(t *testing.T) {
+
+			db, mock := redismock.NewClientMock()
+			redisClient := &RedisClient{client: db, ctx: context.Background()}
+			handler := &Handler{Redis: redisClient}
+
+			if tc.setup != nil {
+				tc.setup(mock)
+			}
+
+			req := httptest.NewRequest("GET", "/analytics/"+tc.shortcode, nil)
+			w := httptest.NewRecorder()
+
+			handler.AnalyticsHandler(w, req)
+
+			resp := w.Result()
+			defer resp.Body.Close()
+
+			if resp.StatusCode != tc.expectedStatus {
+				t.Errorf("Expected %d, got %d", tc.expectedStatus, resp.StatusCode)
+			}
+
+			if tc.expectError {
+				return
+			}
+
 		})
 
 	}

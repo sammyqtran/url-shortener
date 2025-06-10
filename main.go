@@ -3,20 +3,24 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 )
 
 func main() {
-	//setup db
 
-	addr := os.Getenv("REDIS_ADDR")
-	if addr == "" {
-		log.Fatal("REDIS_ADDR environment variable is not set")
+	// Dependency Injection
+	// Singleton of dependency (redis) -> injected where needed (http handlers)
+	// avoids global state
+	redisClient := NewRedisClient()
+	if redisClient == nil {
+		log.Fatal("Could not initialize Redis client")
 	}
-	initRedis(addr)
+	defer redisClient.client.Close()
 
-	http.HandleFunc("/ping", pingHandler)
-	http.HandleFunc("/get/", getHandler)
-	http.HandleFunc("/post", postHandler)
+	handler := &Handler{Redis: redisClient}
+
+	http.HandleFunc("/ping", handler.pingHandler)
+	http.HandleFunc("/get/", handler.getHandler)
+	http.HandleFunc("/post", handler.postHandler)
+	http.HandleFunc("/analytics/", handler.AnalyticsHandler)
 	http.ListenAndServe(":8080", nil)
 }
