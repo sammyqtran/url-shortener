@@ -16,6 +16,16 @@ Example: `localhost:8080/get/abc123` -> redirects to https://example.com/a/f8f9s
 Example: `localhost:8080/post` with body `{"url": "https://example.com/a/f8f9sio"}` -> returns `{"short_code":"abc123"}`
 
 
+## Docker Instructions
+
+To run this containerized with the application and Redis running in separate containers use the following docker-compose command. App will be hosted on port 8080, and redis will be on port 6379.
+
+`
+docker-compose up --build
+`
+
+
+
 ## Testing
 
 Tests can be found in shorten_test.go
@@ -53,9 +63,7 @@ Run application. This should host this on your local machine @ localhost:8080 or
 Shorten a URL. This is an example curl to send a json to the server with an example URL.
 
 `
-curl -X POST http://localhost:8080/post \
-     -H "Content-Type: application/json" \
-     -d '{"url": "https://example.com/a/f8f9sio"}'
+curl -X POST http://localhost:8080/post -H "Content-Type: application/json" -d '{"url": "https://example.com/a/f8f9sio"}'
 `
 
 You will recieve a response with a shortcode.

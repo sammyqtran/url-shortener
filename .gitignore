@@ -3,6 +3,7 @@ hello-go
 *.exe
 *.dll
 *.so
+*.sh
 
 # Vendor folder (if vendored)
 vendor/
@@ -14,8 +15,12 @@ vendor/
 
 # Test coverage output
 coverage.out
+coverage.html
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# DB files
+data/
 
