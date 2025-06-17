@@ -1,0 +1,47 @@
+// proto/url_service.proto
+syntax = "proto3";
+
+package urlservice;
+
+option go_package = "github.com/sammyqtran/url-shortener/proto";
+
+// This is like your HTTP handlers, but defined in protobuf
+service URLService {
+    // Instead of POST /post
+    rpc CreateShortURL(CreateURLRequest) returns (CreateURLResponse);
+    
+    // Instead of GET /get/{code}
+    rpc GetOriginalURL(GetURLRequest) returns (GetURLResponse);
+    
+    // Health check
+    rpc HealthCheck(HealthRequest) returns (HealthResponse);
+}
+
+// These replace your JSON structs
+message CreateURLRequest {
+    string original_url = 1;
+    string user_id = 2;
+}
+
+message CreateURLResponse {
+    string short_code = 1;
+    string short_url = 2;
+    bool success = 3;
+    string error = 4;
+}
+
+message GetURLRequest {
+    string short_code = 1;
+}
+
+message GetURLResponse {
+    string original_url = 1;
+    bool found = 2;
+    string error = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+    bool healthy = 1;
+}
