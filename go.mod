@@ -3,7 +3,6 @@ module github.com/sammyqtran/url-shortener
 go 1.24.3
 
 require (
-	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/redis/go-redis/v9 v9.9.0
