@@ -4,38 +4,69 @@
 
 Takes a URL and transforms it to a shortcode that can be used to retrieve the original URL effectively shortening the original URL.
 
+Currently being refactored into a distributed architecture consisting of these services:
+
+- URL-service completed
+
+- Gateway TODO
+
+- Analytics TODO
+
+## Prerequisites
+
+If you would like to build, run, and test this project with docker compose you will need to have the following items installed
+
+1. [Docker](https://docs.docker.com/get-docker/) 
+
+2. [Docker Compose](https://docs.docker.com/compose/install/) (may be included with docker)
+
 ## Endpoints:
 
-/ping: Health check  
-Example: `localhost:8080/ping` -> returns if server online
+The fields needed for the GRPC endpoints for url-service can be seen in proto/url_service.proto
 
-/get/{code}: redirects user to the URL for the specified code  
-Example: `localhost:8080/get/abc123` -> redirects to https://example.com/a/f8f9sio
-
-/post: accepts JSON `{"url": "https://example.com/a/f8f9sio"}`  
-Example: `localhost:8080/post` with body `{"url": "https://example.com/a/f8f9sio"}` -> returns `{"short_code":"abc123"}`
+    rpc CreateShortURL(CreateURLRequest) returns (CreateURLResponse);
+    
+    rpc GetOriginalURL(GetURLRequest) returns (GetURLResponse);
+    
+    rpc HealthCheck(HealthRequest) returns (HealthResponse);
 
 
 ## Docker Instructions
 
-To run this containerized with the application and Redis running in separate containers use the following docker-compose command. App will be hosted on port 8080, and redis will be on port 6379.
+To run the url-service you can use the docker compose command to spin up the url service as well as the postgres database.
 
 `
-docker-compose up --build
+docker compose up -d --build
 `
 
 
 
 ## Testing
 
-Tests can be found in shorten_test.go
+Current unit tests exists for url-service under internal/service/url-service_test.go.
 
-Unit tests cover the handler logic and helper methods.
+End to end testing exists under cmd/test-client/main.go
 
-To run test with coverage 
+To test first ensure url-service and postgres are running. 
+`
+docker ps
+`
+If they are not running then run the command to build the docker images and start them
 
 `
-go test -cover ./...
+docker compose up -d --build
+`
+
+To run the test client run this command
+
+`
+go run cmd/test-client/main.go
+`
+
+To run unit tests with coverage 
+
+`
+go test ./... -coverprofile=coverage.out
 `
 
 To see an HTML report
@@ -48,44 +79,92 @@ For full validation server needs to be hosted and endpoints tested manually end 
 
 ### Example Usage (Minimal)
 
-Build binary file
+Currently only the internal URL service exists. You can create and retrieve URLs by accessing the service through gRPC.
+
+1. Build images and spin up docker containers  (See Docker Instructions)
+
+2. Health Check
 
 `
-go build -o urlshortener
+grpcurl -plaintext -d '{}' localhost:50051 urlservice.URLService.HealthCheck
 `
 
-Run application. This should host this on your local machine @ localhost:8080 or something similar.
+3. Create a short URL (you need to pass a URL as well as a user id)
+
 
 `
-./urlshorterner
+grpcurl -plaintext -d '{"original_url":"https://example.com","user_id":"user123"}' localhost:50051 urlservice.URLService.CreateShortURL
 `
 
-Shorten a URL. This is an example curl to send a json to the server with an example URL.
+Response:
 
 `
-curl -X POST http://localhost:8080/post -H "Content-Type: application/json" -d '{"url": "https://example.com/a/f8f9sio"}'
+{
+  "shortCode": "UBs3cx",
+  "shortUrl": "http://localhost:8080/UBs3cx",
+  "success": true
+}
 `
 
-You will recieve a response with a shortcode.
+4. Retrieve the original URL from the short code generated 
 
 `
-{"short_code":"atkyt8"}
+grpcurl -plaintext -d '{"short_code":"UBs3cx"}' localhost:50051 urlservice.URLService.G
+etOriginalURL
 `
 
-For testing purposes let's say this is hosted at localhost:8080. To see the redirect visit localhost:8080/atkyt8.
+Response: 
 
-You should be redirected to https://example.com/a/f8f9sio
+`
+{
+  "originalUrl": "https://example.com",
+  "found": true
+}
+`
 
+## Goals and Roadmap 
 
-
-## Goals and Roadmap
+### Original Goals Met
 
 Sprint 1: Basic URL shortening service with core API endpoints and unit tests. (Complete)
 
-Sprint 2: Add persistent storage (e.g., database) instead of in-memory maps.
+Sprint 2: Add persistent storage (e.g., database) instead of in-memory maps. (Complete)
 
-Sprint 3: Add analytics (click tracking, usage stats).
+Sprint 3: Add analytics (click tracking, usage stats). (Complete)
 
-Sprint 4: Implement user auth and management.
+Sprint 4: Implement user auth and management. (Pushed back)
 
 Further goals include deployment to a cloud environment with CI/CD pipeline
+
+### New Goals (Distributed Architecture)
+Current goals are to build out this project with distributed architecture.
+There will be 3 services
+
+1. url-service 
+    - internal service handling URL creation and deletion
+    - database interactions and URL logic
+2. gateway-service
+    - external facing REST API
+    - translates REST requests to gRPC calls to url-service
+    - send events to analytics service on URL hits
+3. analytics-service
+    - internal service that will track user clicks and usage
+    - aggregate data for reporting and insights.
+
+
+### Sprint Plan
+Sprint 1: Microservice architecture split from monolith (Complete)
+
+Sprint 2: gRPC server setup for internal communication (Complete)
+
+Sprint 3: url-service implementation with full DB integration (Complete)
+
+Sprint 4: gateway-service implementation with REST to gRPC translation (In progress)
+
+Sprint 5: analytics-service implementation and event pipeline setup
+
+Sprint 6: User authentication and authorization service
+
+Sprint 7: Cloud deployment with CI/CD pipelines and monitoring
+
+Sprint 8: Performance optimization and horizontal scaling of services
