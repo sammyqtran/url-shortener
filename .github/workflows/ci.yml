@@ -40,7 +40,11 @@ jobs:
 
       - name: Build and start services via docker-compose
         run: |
+<<<<<<< HEAD
           docker compose up -d --build
+=======
+          docker-compose up -d --build
+>>>>>>> 0898b5e (Fixed CI workflow to test for url-service)
           
           # Wait for postgres health
           for i in {1..30}; do
@@ -62,4 +66,8 @@ jobs:
         run: go run main.go
 
       - name: Tear down docker-compose
+<<<<<<< HEAD
         run: docker compose down
+=======
+        run: docker-compose down
+>>>>>>> 0898b5e (Fixed CI workflow to test for url-service)

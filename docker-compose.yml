@@ -9,6 +9,7 @@ services:
       POSTGRES_DB: urlshortener
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
+<<<<<<< HEAD
     # ports:
     #   - "5432:5432"
     volumes:
@@ -34,6 +35,33 @@ services:
       DB_SSLMODE: disable
       GRPC_PORT: 50051
     ports:
+=======
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d urlshortener"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  url-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.url-service
+    container_name: url-shortener-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: urlshortener
+      DB_SSLMODE: disable
+      GRPC_PORT: 50051
+    ports:
+>>>>>>> 0898b5e (Fixed CI workflow to test for url-service)
       - "50051:50051"
     depends_on:
       postgres:
