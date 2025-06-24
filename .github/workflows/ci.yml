@@ -40,7 +40,7 @@ jobs:
 
       - name: Build and start services via docker-compose
         run: |
-          docker-compose up -d --build
+          docker compose up -d --build
           
           # Wait for postgres health
           for i in {1..30}; do
@@ -62,4 +62,4 @@ jobs:
         run: go run main.go
 
       - name: Tear down docker-compose
-        run: docker-compose down
+        run: docker compose down
