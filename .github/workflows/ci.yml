@@ -1,25 +1,31 @@
-name: Go CI
+name: Go CI with Docker Compose and Test Client
 
 on:
   push:
-    branches: [ main, persistence-concurrency ]
+    branches:
+      - '**'
   pull_request:
-    branches: [ main ]
+    branches:
+      - '**'
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     services:
-      redis:
-        image: redis
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: urlshortener
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
         ports:
-          - 6379:6379
+          - 5432:5432
         options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-cmd="pg_isready -U postgres -d urlshortener"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       - uses: actions/checkout@v4
@@ -32,14 +38,28 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests
+      - name: Build and start services via docker-compose
+        run: |
+          docker-compose up -d --build
+          
+          # Wait for postgres health
+          for i in {1..30}; do
+            status=$(docker inspect --format='{{json .State.Health.Status}}' url-shortener-postgres || echo "null")
+            if [[ "$status" == "\"healthy\"" ]]; then
+              echo "Postgres is healthy"
+              break
+            fi
+            echo "Waiting for Postgres to be healthy..."
+            sleep 2
+          done
+
+      - name: Run url-service tests
+        working-directory: ./cmd/url-service
         run: go test -v ./...
 
-      - name: Generate coverage report
-        run: go test -coverprofile=coverage.out ./...
+      - name: Run test client to verify grpc service
+        working-directory: ./cmd/test-client
+        run: go run main.go
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage.out
+      - name: Tear down docker-compose
+        run: docker-compose down
