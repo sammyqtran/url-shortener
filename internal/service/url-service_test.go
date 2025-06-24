@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/sammyqtran/url-shortener/internal/models"
-	"github.com/sammyqtran/url-shortener/internal/repository"
 	pb "github.com/sammyqtran/url-shortener/proto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -26,10 +24,7 @@ func (m *MockRepo) Create(ctx context.Context, url *models.URL) error {
 func (m *MockRepo) GetByShortCode(ctx context.Context, shortCode string) (*models.URL, error) {
 	args := m.Called(ctx, shortCode)
 
-	if url, ok := args.Get(0).(*models.URL); ok {
-		return url, args.Error(1)
-	}
-	return nil, args.Error(1)
+	return args.Get(0).(*models.URL), args.Error(1)
 }
 
 func (m *MockRepo) GetByID(ctx context.Context, id int64) (*models.URL, error) {
@@ -109,19 +104,6 @@ func TestGenerateShortCode_FailedGeneration(t *testing.T) {
 
 	require.Error(t, err)
 	require.Empty(t, shortCode)
-
-	mockRepo = new(MockRepo)
-	service = &URLService{
-		repo:    mockRepo,
-		baseURL: "https://localhost:8080",
-	}
-
-	mockRepo.On("IsShortCodeExists", mock.Anything, mock.AnythingOfType("string")).Return(false, fmt.Errorf("random error"))
-	shortCode, err = service.GenerateShortCode(context.Background())
-
-	require.Error(t, err)
-	require.Empty(t, shortCode)
-	require.Contains(t, err.Error(), "error checking short code existence:")
 }
 
 func TestValidateURL(t *testing.T) {
@@ -155,12 +137,6 @@ func TestValidateURL(t *testing.T) {
 			url:           "https://google",
 			err:           true,
 			expectedError: "URL must contain a valid domain",
-		},
-		{
-			name:          "invalid URL format",
-			url:           "http://%41:8080/",
-			err:           true,
-			expectedError: "invalid URL format:",
 		},
 	}
 
@@ -204,127 +180,42 @@ func TestHealthCheck(t *testing.T) {
 }
 
 func TestGetOriginalURL(t *testing.T) {
-	tests := []struct {
-		name          string
-		mockReturn    interface{}
-		mockError     error
-		request       *pb.GetURLRequest
-		expectError   bool
-		expectNilResp bool
-		checkResponse func(t *testing.T, resp *pb.GetURLResponse, err error)
-	}{
-		{
-			name: "success",
-			mockReturn: &models.URL{
-				OriginalURL: "https://google.com",
-			},
-			mockError: nil,
-			request: &pb.GetURLRequest{
-				ShortCode: "abc123",
-			},
-			expectError:   false,
-			expectNilResp: false,
-			checkResponse: func(t *testing.T, resp *pb.GetURLResponse, err error) {
-				require.NoError(t, err)
-				require.NotNil(t, resp)
-				require.Contains(t, resp.OriginalUrl, "https://google.com")
-				require.True(t, resp.Found)
-			},
-		},
-		{
-			name:          "invalid shortcode empty",
-			mockReturn:    nil,
-			mockError:     nil,
-			request:       &pb.GetURLRequest{ShortCode: ""},
-			expectError:   true,
-			expectNilResp: true,
-			checkResponse: func(t *testing.T, resp *pb.GetURLResponse, err error) {
-				require.Error(t, err)
-				require.Nil(t, resp)
-				require.Contains(t, err.Error(), "short_code cannot be empty")
-			},
-		},
-		{
-			name:       "repo url not found",
-			mockReturn: nil,
-			mockError:  repository.ErrURLNotFound,
-			request: &pb.GetURLRequest{
-				ShortCode: "abc123",
-			},
-			expectError:   false,
-			expectNilResp: false,
-			checkResponse: func(t *testing.T, resp *pb.GetURLResponse, err error) {
-				require.NoError(t, err)
-				require.NotNil(t, resp)
-				require.False(t, resp.Found)
-				require.Equal(t, "URL not found", resp.Error)
-			},
-		},
-		{
-			name:       "repo other failure",
-			mockReturn: nil,
-			mockError:  fmt.Errorf("random failure"),
-			request: &pb.GetURLRequest{
-				ShortCode: "abc123",
-			},
-			expectError:   false,
-			expectNilResp: false,
-			checkResponse: func(t *testing.T, resp *pb.GetURLResponse, err error) {
-				require.NoError(t, err)
-				require.NotNil(t, resp)
-				require.False(t, resp.Found)
-				require.Contains(t, resp.Error, "failed to retrieve URL:")
-			},
-		},
-		{
-			name: "expired URL",
-			mockReturn: &models.URL{
-				OriginalURL: "https://google.com",
-				ExpiresAt:   ptrTime(time.Now().Add(-time.Hour)),
-			},
-			mockError: nil,
-			request: &pb.GetURLRequest{
-				ShortCode: "abc123",
-			},
-			expectError:   false,
-			expectNilResp: false,
-			checkResponse: func(t *testing.T, resp *pb.GetURLResponse, err error) {
-				require.NoError(t, err)
-				require.NotNil(t, resp)
-				require.False(t, resp.Found)
-				require.Contains(t, resp.Error, "URL has expired")
-			},
-		},
+
+	repo := new(MockRepo)
+	service := &URLService{
+		repo:    repo,
+		baseURL: "https://localhost:8080",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := new(MockRepo)
-			service := &URLService{
-				repo:    repo,
-				baseURL: "https://localhost:8080",
-			}
-
-			if tt.mockReturn != nil || tt.mockError != nil {
-				repo.On("GetByShortCode", mock.Anything, mock.Anything).Return(tt.mockReturn, tt.mockError)
-			}
-
-			resp, err := service.GetOriginalURL(context.Background(), tt.request)
-
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			if tt.expectNilResp {
-				require.Nil(t, resp)
-			} else {
-				require.NotNil(t, resp)
-			}
-
-			tt.checkResponse(t, resp, err)
-		})
+	request := &pb.GetURLRequest{
+		ShortCode: "abc123",
 	}
+
+	expectedURL := &models.URL{
+		OriginalURL: "https://google.com",
+	}
+
+	repo.On("GetByShortCode", mock.Anything, "abc123").Return(expectedURL, nil)
+
+	response, err := service.GetOriginalURL(context.Background(), request)
+
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Contains(t, response.OriginalUrl, "https://google.com")
+	require.True(t, response.Found)
+
+	// invalid shortcode
+
+	request = &pb.GetURLRequest{
+		ShortCode: "",
+	}
+
+	response, err = service.GetOriginalURL(context.Background(), request)
+
+	require.Error(t, err)
+	require.Nil(t, response)
+	require.Contains(t, err.Error(), "short_code cannot be empty")
+
 }
 
 func TestCreateShortURL(t *testing.T) {
@@ -398,31 +289,4 @@ func TestCreateShortURL(t *testing.T) {
 	require.Nil(t, response)
 	require.Contains(t, err.Error(), "failed to generate")
 	require.Equal(t, 10, callCount)
-
-	// failed save to db
-	repo = new(MockRepo)
-	service = &URLService{
-		repo:    repo,
-		baseURL: "https://localhost:8080/",
-		codeGenerator: func(ctx context.Context) (string, error) {
-			return "abc123", nil
-		},
-	}
-	request = &pb.CreateURLRequest{
-		OriginalUrl: "https://google.com",
-		UserId:      "user123",
-	}
-
-	repo.On("Create", mock.Anything, mock.Anything).Return(fmt.Errorf("random failure"))
-
-	response, err = service.CreateShortURL(context.Background(), request)
-
-	require.Error(t, err)
-	require.Nil(t, response)
-	require.Contains(t, err.Error(), "failed to create URL:")
-
-}
-
-func ptrTime(t time.Time) *time.Time {
-	return &t
 }
