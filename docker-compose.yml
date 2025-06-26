@@ -1,6 +1,16 @@
 version: '3.8'
 
 services:
+  gateway:
+    build:
+      context: .
+      dockerfile: ./cmd/gateway-service/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - url-service
+    networks:
+      - app-network
 
   postgres:
     image: postgres:15-alpine
@@ -19,11 +29,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - app-network
 
   url-service:
     build:
       context: .
-      dockerfile: Dockerfile.url-service
+      dockerfile: ./cmd/url-service/Dockerfile
     container_name: url-shortener-service
     environment:
       DB_HOST: postgres
@@ -39,6 +51,13 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - app-network
 
 volumes:
   postgres_data:
+
+
+networks:
+  app-network:
+    driver: bridge
