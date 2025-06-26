@@ -28,8 +28,8 @@ func main() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/create", server.HandleCreateShortURL).Methods("POST")
-	r.HandleFunc("/{shortCode}", server.HandleGetOriginalURL).Methods("GET")
 	r.HandleFunc("/healthz", server.HandleHealthCheck).Methods("GET")
+	r.HandleFunc("/{shortCode}", server.HandleGetOriginalURL).Methods("GET")
 
 	log.Println("Gateway service listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))

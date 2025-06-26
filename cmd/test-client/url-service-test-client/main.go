@@ -1,4 +1,4 @@
-// cmd/test-client/main.go
+// cmd/test-client/url-service-test-client/main.go
 package main
 
 import (
