@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-redis/redismock/v9"
 	"github.com/sammyqtran/url-shortener/internal/models"
 	"github.com/sammyqtran/url-shortener/internal/repository"
 	pb "github.com/sammyqtran/url-shortener/proto"
@@ -212,6 +214,7 @@ func TestGetOriginalURL(t *testing.T) {
 		expectError   bool
 		expectNilResp bool
 		checkResponse func(t *testing.T, resp *pb.GetURLResponse, err error)
+		hitCache      bool
 	}{
 		{
 			name: "success",
@@ -295,18 +298,73 @@ func TestGetOriginalURL(t *testing.T) {
 				require.Contains(t, resp.Error, "URL has expired")
 			},
 		},
+		{
+			name: "db fetch populates cache",
+			mockReturn: &models.URL{
+				OriginalURL: "https://example.com",
+				ExpiresAt:   nil, // or future time, so not expired
+			},
+			mockError: nil,
+			request: &pb.GetURLRequest{
+				ShortCode: "abc123",
+			},
+			expectError:   false,
+			expectNilResp: false,
+			checkResponse: func(t *testing.T, resp *pb.GetURLResponse, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.True(t, resp.Found)
+				require.Equal(t, "https://example.com", resp.OriginalUrl)
+			},
+			hitCache: false, // force cache miss so it falls back to repo
+		},
+		{
+			name: "expired in cache",
+			mockReturn: &models.URL{
+				OriginalURL: "https://google.com",
+				ExpiresAt:   ptrTime(time.Now().Add(-time.Hour)),
+			},
+			mockError: nil,
+			request: &pb.GetURLRequest{
+				ShortCode: "abc123",
+			},
+			expectError:   false,
+			expectNilResp: false,
+			checkResponse: func(t *testing.T, resp *pb.GetURLResponse, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.False(t, resp.Found)
+				require.Contains(t, resp.Error, "URL has expired")
+			},
+			hitCache: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			db, mockClient := redismock.NewClientMock()
 			repo := new(MockRepo)
 			service := &URLService{
 				repo:    repo,
 				baseURL: "https://localhost:8080",
+				cache:   db,
 			}
 
 			if tt.mockReturn != nil || tt.mockError != nil {
 				repo.On("GetByShortCode", mock.Anything, mock.Anything).Return(tt.mockReturn, tt.mockError)
+			}
+
+			if tt.name == "success" {
+				data, _ := json.Marshal(tt.mockReturn)
+				mockClient.ExpectGet("url:" + tt.request.ShortCode).SetVal(string(data))
+			} else {
+				if tt.hitCache {
+					data, _ := json.Marshal(tt.mockReturn)
+					mockClient.ExpectGet("url:" + tt.request.ShortCode).SetVal(string(data))
+					mockClient.ExpectDel("url:" + tt.request.ShortCode).SetVal(1)
+				} else {
+					mockClient.ExpectGet("url:" + tt.request.ShortCode).RedisNil()
+				}
 			}
 
 			resp, err := service.GetOriginalURL(context.Background(), tt.request)
@@ -328,99 +386,202 @@ func TestGetOriginalURL(t *testing.T) {
 }
 
 func TestCreateShortURL(t *testing.T) {
+	tests := []struct {
+		name          string
+		codeGenerator func(ctx context.Context) (string, error)
+		mockSetup     func(m *MockRepo, mockRedis redismock.ClientMock)
+		request       *pb.CreateURLRequest
+		expectError   bool
+		checkResponse func(t *testing.T, resp *pb.CreateURLResponse, err error)
+	}{
+		{
+			name: "success",
+			codeGenerator: func(ctx context.Context) (string, error) {
+				return "abc123", nil
+			},
+			mockSetup: func(m *MockRepo, mockRedis redismock.ClientMock) {
+				m.On("Create", mock.Anything, mock.AnythingOfType("*models.URL")).Return(nil)
+				mockRedis.ExpectSet("abc123", mock.Anything, 10*time.Minute).SetVal("OK")
 
+			},
+			request: &pb.CreateURLRequest{
+				OriginalUrl: "https://google.com",
+				UserId:      "user123",
+			},
+			expectError: false,
+			checkResponse: func(t *testing.T, resp *pb.CreateURLResponse, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.True(t, resp.Success)
+				require.Equal(t, "abc123", resp.ShortCode)
+				require.Equal(t, "https://localhost:8080/abc123", resp.ShortUrl)
+			},
+		},
+		{
+			name:      "invalid url",
+			mockSetup: func(m *MockRepo, mockRedis redismock.ClientMock) {},
+			codeGenerator: func(ctx context.Context) (string, error) {
+				return "abc123", nil
+			},
+			request: &pb.CreateURLRequest{
+				OriginalUrl: "https://",
+				UserId:      "user123",
+			},
+			expectError: true,
+			checkResponse: func(t *testing.T, resp *pb.CreateURLResponse, err error) {
+				require.Error(t, err)
+				require.Nil(t, resp)
+				require.Contains(t, err.Error(), "invalid URL:")
+			},
+		},
+		{
+			name: "failed code generation",
+			codeGenerator: func(ctx context.Context) (string, error) {
+				return "", fmt.Errorf("failed to generate a unique short code after 10 attempts")
+			},
+			mockSetup: func(m *MockRepo, mockRedis redismock.ClientMock) {
+			},
+			request: &pb.CreateURLRequest{
+				OriginalUrl: "https://google.com",
+				UserId:      "user123",
+			},
+			expectError: true,
+			checkResponse: func(t *testing.T, resp *pb.CreateURLResponse, err error) {
+				require.Error(t, err)
+				require.Nil(t, resp)
+				require.Contains(t, err.Error(), "failed to generate a unique short code")
+			},
+		},
+		{
+			name: "failed save to db",
+			codeGenerator: func(ctx context.Context) (string, error) {
+				return "abc123", nil
+			},
+			mockSetup: func(m *MockRepo, mockRedis redismock.ClientMock) {
+				m.On("Create", mock.Anything, mock.AnythingOfType("*models.URL")).Return(fmt.Errorf("random failure"))
+			},
+			request: &pb.CreateURLRequest{
+				OriginalUrl: "https://google.com",
+				UserId:      "user123",
+			},
+			expectError: true,
+			checkResponse: func(t *testing.T, resp *pb.CreateURLResponse, err error) {
+				require.Error(t, err)
+				require.Nil(t, resp)
+				require.Contains(t, err.Error(), "failed to create URL:")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := new(MockRepo)
+
+			cache, mockRedis := redismock.NewClientMock()
+			tt.mockSetup(repo, mockRedis)
+
+			service := &URLService{
+				repo:          repo,
+				baseURL:       "https://localhost:8080/",
+				codeGenerator: tt.codeGenerator,
+				cache:         cache,
+			}
+
+			resp, err := service.CreateShortURL(context.Background(), tt.request)
+
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			tt.checkResponse(t, resp, err)
+			repo.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGetFromCache_CacheHit(t *testing.T) {
+	// create redis mock client and mock controller
+	db, mock := redismock.NewClientMock()
 	repo := new(MockRepo)
 	service := &URLService{
 		repo:    repo,
-		baseURL: "https://localhost:8080/",
-		codeGenerator: func(ctx context.Context) (string, error) {
-			return "abc123", nil
-		},
+		cache:   db,
+		baseURL: "https://localhost:8080",
 	}
 
-	request := &pb.CreateURLRequest{
-		OriginalUrl: "https://google.com",
-		UserId:      "user123",
+	urlModel := &models.URL{
+		OriginalURL: "https://google.com",
+		ShortCode:   "abc123",
 	}
 
-	repo.On("IsShortCodeExists", mock.Anything, mock.AnythingOfType("string")).Return(false, nil)
-	repo.On("Create", mock.Anything, mock.AnythingOfType("*models.URL")).Return(nil)
-
-	response, err := service.CreateShortURL(context.Background(), request)
-
+	data, err := json.Marshal(urlModel)
 	require.NoError(t, err)
-	require.NotNil(t, response)
-	require.True(t, response.Success)
-	require.Equal(t, "abc123", response.ShortCode)
-	require.Equal(t, "https://localhost:8080/abc123", response.ShortUrl)
 
-	request = &pb.CreateURLRequest{
-		OriginalUrl: "https://",
-		UserId:      "user123",
+	// mock redis GET command expectation for the key "url:abc123"
+	mock.ExpectGet("url:abc123").SetVal(string(data))
+
+	result, err := service.getFromCache(context.Background(), "abc123")
+	require.NoError(t, err)
+	require.Equal(t, urlModel.OriginalURL, result.OriginalURL)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+
+}
+
+func TestGetFromCache_CacheMiss(t *testing.T) {
+	db, mock := redismock.NewClientMock()
+	service := &URLService{
+		repo:  new(MockRepo),
+		cache: db,
 	}
 
-	response, err = service.CreateShortURL(context.Background(), request)
+	mock.ExpectGet("url:abc123").RedisNil()
 
+	result, err := service.getFromCache(context.Background(), "abc123")
 	require.Error(t, err)
-	require.Nil(t, response)
-	require.Contains(t, err.Error(), "invalid URL:")
+	require.Nil(t, result)
 
-	repo = new(MockRepo)
-	callCount := 0
-	repo.On("IsShortCodeExists", mock.Anything, "abc123").Return(true, nil)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
 
-	service = &URLService{
-		repo:    repo,
-		baseURL: "https://localhost:8080/",
-		codeGenerator: func(ctx context.Context) (string, error) {
-			for i := 0; i < 10; i++ {
-				callCount++
-				exists, err := repo.IsShortCodeExists(ctx, "abc123")
-				if err != nil {
-					return "", err
-				}
-				if !exists {
-					return "abc123", nil
-				}
-			}
-			return "", fmt.Errorf("failed to generate a unique short code after 10 attempts")
-		},
+func TestGetFromCache_CachErr(t *testing.T) {
+	db, mock := redismock.NewClientMock()
+	service := &URLService{
+		repo:  new(MockRepo),
+		cache: db,
 	}
 
-	request = &pb.CreateURLRequest{
-		OriginalUrl: "https://google.com",
-		UserId:      "user123",
-	}
+	mock.ExpectGet("url:abc123").SetErr(fmt.Errorf("redis error"))
 
-	response, err = service.CreateShortURL(context.Background(), request)
-
+	result, err := service.getFromCache(context.Background(), "abc123")
 	require.Error(t, err)
-	require.Nil(t, response)
-	require.Contains(t, err.Error(), "failed to generate")
-	require.Equal(t, 10, callCount)
+	require.Nil(t, result)
 
-	// failed save to db
-	repo = new(MockRepo)
-	service = &URLService{
-		repo:    repo,
-		baseURL: "https://localhost:8080/",
-		codeGenerator: func(ctx context.Context) (string, error) {
-			return "abc123", nil
-		},
-	}
-	request = &pb.CreateURLRequest{
-		OriginalUrl: "https://google.com",
-		UserId:      "user123",
+}
+
+func TestSetCacheFromModel(t *testing.T) {
+	db, mock := redismock.NewClientMock()
+	service := &URLService{
+		repo:  new(MockRepo),
+		cache: db,
 	}
 
-	repo.On("Create", mock.Anything, mock.Anything).Return(fmt.Errorf("random failure"))
+	urlModel := &models.URL{
+		OriginalURL: "https://google.com",
+		ShortCode:   "abc123",
+	}
 
-	response, err = service.CreateShortURL(context.Background(), request)
+	data, err := json.Marshal(urlModel)
+	require.NoError(t, err)
 
-	require.Error(t, err)
-	require.Nil(t, response)
-	require.Contains(t, err.Error(), "failed to create URL:")
+	mock.ExpectSet("url:abc123", data, 10*time.Minute).SetVal("OK")
 
+	err = service.setCacheFromModel(context.Background(), "abc123", urlModel)
+	require.NoError(t, err)
+
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func ptrTime(t time.Time) *time.Time {

@@ -8,7 +8,17 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - url-service
+      url-service:
+        condition: service_healthy
+    
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
     networks:
       - app-network
 
@@ -53,6 +63,11 @@ services:
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

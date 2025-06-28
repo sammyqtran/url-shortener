@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/sammyqtran/url-shortener/internal/database"
 	"github.com/sammyqtran/url-shortener/internal/repository/postgres"
 	"github.com/sammyqtran/url-shortener/internal/service"
@@ -48,8 +50,23 @@ func main() {
 	// create a new URL repository instance
 	urlRepo := postgres.NewPostgresURLRepository(db)
 
+	// Create a Redis client and connect to Redis
+	cache := redis.NewClient(&redis.Options{
+		Addr: getEnv("REDIS_ADDR", "redis:6379"),
+		DB:   0, // use default DB
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := cache.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+
+	}
+	log.Println("Connected to Redis successfully")
+
 	// create service instance (uses default baseURL from service package)
-	urlService := service.NewURLService(urlRepo)
+	urlService := service.NewURLService(urlRepo, cache)
 
 	// create a new gRPC server
 	log.Println("Starting gRPC server on port 50051...")
