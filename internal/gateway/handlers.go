@@ -3,15 +3,18 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/sammyqtran/url-shortener/internal/queue"
 	pb "github.com/sammyqtran/url-shortener/proto"
 )
 
 type GatewayServer struct {
 	GrpcClient pb.URLServiceClient
+	Publisher  queue.EventPublisher
 }
 
 func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +45,17 @@ func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to create short URL")
 		return
+	}
+
+	// Publish URL created event
+	if s.Publisher != nil {
+		go func() {
+			ctx := context.Background()
+			err := s.Publisher.PublishURLCreated(ctx, response.ShortCode, req.URL, s.getClientInfo(r))
+			if err != nil {
+				log.Printf("Failed to publish URL created event: %v", err)
+			}
+		}()
 	}
 
 	resp := map[string]string{"shortcode": response.ShortCode}
@@ -78,6 +92,24 @@ func (s *GatewayServer) HandleGetOriginalURL(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Publish URL accessed event
+	if s.Publisher != nil {
+		go func() {
+			ctx := context.Background()
+			err := s.Publisher.PublishURLAccessed(
+				ctx,
+				shortCode,
+				response.OriginalUrl,
+				r.UserAgent(),
+				s.getClientIP(r),
+				r.Header.Get("Referer"),
+			)
+			if err != nil {
+				log.Printf("Failed to publish URL accessed event: %v", err)
+			}
+		}()
+	}
+
 	http.Redirect(w, r, response.OriginalUrl, http.StatusFound)
 
 }
@@ -93,4 +125,26 @@ func respondWithError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func (s *GatewayServer) getClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		ips := strings.Split(xff, ",")
+		return strings.TrimSpace(ips[0])
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+	ip := r.RemoteAddr
+	if colon := strings.LastIndex(ip, ":"); colon != -1 {
+		ip = ip[:colon]
+	}
+	return ip
+}
+
+// getClientInfo extracts client information from request (for analytics)
+func (g *GatewayServer) getClientInfo(r *http.Request) string {
+	// Extract user info if available (e.g., from JWT token, API key, etc.)
+	// For now, return IP address
+	return g.getClientIP(r)
 }
