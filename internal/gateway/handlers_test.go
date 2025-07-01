@@ -7,11 +7,43 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/sammyqtran/url-shortener/proto"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 )
+
+// mock event publisher
+
+type MockPublisher struct {
+	Called             bool
+	PublishedShortCode string
+	PublishedURL       string
+	PublishedUser      string
+	UserAgent          string
+	ipAddress          string
+	referrer           string
+	Err                error
+}
+
+func (m *MockPublisher) PublishURLCreated(ctx context.Context, shortCode, originalURL, createdBy string) error {
+	m.Called = true
+	m.PublishedShortCode = shortCode
+	m.PublishedURL = originalURL
+	m.PublishedUser = createdBy
+	return m.Err
+}
+
+func (m *MockPublisher) PublishURLAccessed(ctx context.Context, shortCode, originalURL, userAgent, ipAddress, referrer string) error {
+	m.Called = true
+	m.PublishedShortCode = shortCode
+	m.PublishedURL = originalURL
+	m.UserAgent = userAgent
+	m.ipAddress = ipAddress
+	m.referrer = referrer
+	return m.Err
+}
 
 // mock grpc client
 type MockURLServiceClient struct {
@@ -233,5 +265,61 @@ func TestHandleCreateShortURL(t *testing.T) {
 		})
 
 	}
+
+}
+
+func TestPublishCreate(t *testing.T) {
+
+	mockClient := new(MockURLServiceClient)
+	mockPublisher := new(MockPublisher)
+	service := &GatewayServer{
+		GrpcClient: mockClient,
+		Publisher:  mockPublisher,
+	}
+
+	mockClient.
+		On("CreateShortURL", mock.Anything, mock.Anything, mock.Anything).
+		Return(&pb.CreateURLResponse{ShortCode: "test123"}, nil)
+
+	body := `{"url": "https://example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	service.HandleCreateShortURL(w, req)
+
+	time.Sleep(50 * time.Millisecond) // wait for goroutine
+
+	if !mockPublisher.Called {
+		t.Fatal("expected PublishURLCreated to be called")
+	}
+
+	if mockPublisher.PublishedShortCode != "test123" {
+		t.Errorf("expected shortcode test123, got %s", mockPublisher.PublishedShortCode)
+	}
+
+	if mockPublisher.PublishedURL != "https://example.com" {
+		t.Errorf("expected URL https://example.com, got %s", mockPublisher.PublishedURL)
+	}
+}
+
+func TestPublishAccess(t *testing.T) {
+	mockClient := new(MockURLServiceClient)
+	mockPublisher := new(MockPublisher)
+	service := &GatewayServer{
+		GrpcClient: mockClient,
+		Publisher:  mockPublisher,
+	}
+
+	mockClient.
+		On("GetOriginalURL", mock.Anything, mock.Anything, mock.Anything).
+		Return(&pb.GetURLResponse{
+			OriginalUrl: "https://google.com",
+			Found:       true,
+		}, nil)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/abc123", nil)
+	service.HandleGetOriginalURL(w, req)
 
 }
