@@ -21,7 +21,7 @@ import (
 func main() {
 	// database configuration from environment variables
 	dbConfig := database.Config{
-		Host:         getEnv("DB_HOST", "localhost"),
+		Host:         getEnv("DB_HOST", "postgres"),
 		Port:         getEnvAsInt("DB_PORT", 5432),
 		User:         getEnv("DB_USER", "postgres"),
 		Password:     getEnv("DB_PASSWORD", "password"),

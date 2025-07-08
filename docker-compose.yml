@@ -10,13 +10,11 @@ services:
     depends_on:
       url-service:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,11 +26,6 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - app-network
   # Analytics Service (Message Queue Consumer)
@@ -50,9 +43,6 @@ services:
       # - ANALYTICS_DB_NAME=urlshortener
       # - ANALYTICS_DB_USER=urluser
       # - ANALYTICS_DB_PASSWORD=urlpass
-    depends_on:
-      redis:
-        condition: service_healthy
     restart: unless-stopped
     networks:
       - app-network
