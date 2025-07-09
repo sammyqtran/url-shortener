@@ -3,28 +3,30 @@ package analytics
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"time"
 
 	"github.com/sammyqtran/url-shortener/internal/events"
 	"github.com/sammyqtran/url-shortener/internal/queue"
+	"go.uber.org/zap"
 )
 
 type AnalyticsService struct {
 	MessageQueue queue.MessageQueue
+	Logger       *zap.Logger
 	// Add database connection here when you want to persist analytics
 }
 
 // NewAnalyticsService creates a new analytics service
-func NewAnalyticsService(messageQueue queue.MessageQueue) *AnalyticsService {
+func NewAnalyticsService(messageQueue queue.MessageQueue, Logger *zap.Logger) *AnalyticsService {
 	return &AnalyticsService{
 		MessageQueue: messageQueue,
+		Logger:       Logger,
 	}
 }
 
 // Start starts the analytics service
 func (a *AnalyticsService) Start(ctx context.Context) error {
-	log.Println("Starting analytics service...")
+	a.Logger.Info("Starting analytics service...")
 
 	// Start consuming events
 	streamConfig := queue.DefaultStreamConfig()
@@ -39,15 +41,14 @@ func (a *AnalyticsService) Start(ctx context.Context) error {
 
 // handleEvent processes incoming events
 func (a *AnalyticsService) handleEvent(ctx context.Context, eventType events.EventType, data []byte) error {
-	log.Printf("Received event: %s", eventType)
-
+	a.Logger.Info("Received event", zap.String("eventType", string(eventType)))
 	switch eventType {
 	case events.URLCreatedEvent:
 		return a.handleURLCreated(ctx, data)
 	case events.URLAccessedEvent:
 		return a.handleURLAccessed(ctx, data)
 	default:
-		log.Printf("Unknown event type: %s", eventType)
+		a.Logger.Warn("Unknown event type", zap.String("event_type", string(eventType)))
 		return nil
 	}
 }
@@ -59,13 +60,13 @@ func (a *AnalyticsService) handleURLAccessed(ctx context.Context, data []byte) e
 		return err
 	}
 
-	log.Printf("URL Accessed - Short Code: %s, Original URL: %s, User Agent: %s, IP: %s, Referrer: %s, Timestamp: %s",
-		event.ShortCode,
-		event.OriginalURL,
-		event.UserAgent,
-		event.IPAddress,
-		event.Referrer,
-		event.Timestamp.Format(time.RFC3339),
+	a.Logger.Info("URL Accessed",
+		zap.String("shortCode", event.ShortCode),
+		zap.String("originalURL", event.OriginalURL),
+		zap.String("userAgent", event.UserAgent),
+		zap.String("ip", event.IPAddress),
+		zap.String("referrer", event.Referrer),
+		zap.String("timestamp", event.Timestamp.Format(time.RFC3339)),
 	)
 
 	// TODO: Store analytics data in database
@@ -79,12 +80,11 @@ func (a *AnalyticsService) handleURLCreated(ctx context.Context, data []byte) er
 	if err := json.Unmarshal(data, &event); err != nil {
 		return err
 	}
-
-	log.Printf("URL Created - Short Code: %s, Original URL: %s, Created By: %s, Timestamp: %s",
-		event.ShortCode,
-		event.OriginalURL,
-		event.CreatedBy,
-		event.Timestamp.Format(time.RFC3339),
+	a.Logger.Info("URL Created",
+		zap.String("shortCode", event.ShortCode),
+		zap.String("originalURL", event.OriginalURL),
+		zap.String("createdBy", event.CreatedBy),
+		zap.String("timestamp", event.Timestamp.Format(time.RFC3339)),
 	)
 
 	return nil

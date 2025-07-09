@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -26,13 +27,15 @@ type URLService struct {
 	baseURL       string
 	codeGenerator func(ctx context.Context) (string, error)
 	cache         *redis.Client
+	Logger        *zap.Logger
 }
 
-func NewURLService(repo repository.URLRepository, cache *redis.Client) *URLService {
+func NewURLService(repo repository.URLRepository, cache *redis.Client, logger *zap.Logger) *URLService {
 	service := &URLService{
 		repo:    repo,
 		baseURL: "http://localhost:8080/",
 		cache:   cache,
+		Logger:  logger,
 	}
 	service.codeGenerator = service.GenerateShortCode
 	return service
@@ -48,6 +51,7 @@ func (s *URLService) CreateShortURL(ctx context.Context, req *pb.CreateURLReques
 	// short code generation
 	shortCode, err := s.codeGenerator(ctx)
 	if err != nil {
+		s.Logger.Error("Failed to generate short code", zap.Error(err))
 		return nil, status.Errorf(codes.Internal, "failed to generate short code: %v", err)
 	}
 
@@ -66,6 +70,7 @@ func (s *URLService) CreateShortURL(ctx context.Context, req *pb.CreateURLReques
 
 	// Save to database
 	if err := s.repo.Create(ctx, urlModel); err != nil {
+		s.Logger.Error("Failed to create short URL", zap.Error(err))
 		return nil, status.Errorf(codes.Internal, "failed to create URL: %v", err)
 	}
 
@@ -75,7 +80,7 @@ func (s *URLService) CreateShortURL(ctx context.Context, req *pb.CreateURLReques
 
 	return &pb.CreateURLResponse{
 		ShortCode: shortCode,
-		ShortUrl:  s.baseURL + shortCode, // Replace with actual base URL
+		ShortUrl:  s.baseURL + shortCode,
 		Success:   true,
 		Error:     "",
 	}, nil
@@ -89,7 +94,7 @@ func (s *URLService) GetOriginalURL(ctx context.Context, req *pb.GetURLRequest) 
 	// Try cache first
 	cachedURL, err := s.getFromCache(ctx, req.ShortCode)
 	if err == nil {
-		fmt.Printf("[CACHE HIT] shortCode=%s\n", req.ShortCode)
+		s.Logger.Info("Cache hit", zap.String("shortCode", req.ShortCode))
 		// Cache hit - check expiration
 		if cachedURL.ExpiresAt != nil && cachedURL.ExpiresAt.Before(time.Now()) {
 			// URL expired - remove from cache
@@ -108,11 +113,12 @@ func (s *URLService) GetOriginalURL(ctx context.Context, req *pb.GetURLRequest) 
 			Found:       true,
 		}, nil
 	}
-	fmt.Printf("[CACHE MISS] shortCode=%s, error=%v\n", req.ShortCode, err)
+	s.Logger.Info("Cache miss", zap.String("shortCode", req.ShortCode))
 
 	// Fall back retrieve from repository
 	urlModel, err := s.repo.GetByShortCode(ctx, req.ShortCode)
 	if err != nil {
+		s.Logger.Error("Error retrieving from repository", zap.Error(err))
 		if err == repository.ErrURLNotFound {
 			return &pb.GetURLResponse{
 				Found: false,
@@ -131,7 +137,7 @@ func (s *URLService) GetOriginalURL(ctx context.Context, req *pb.GetURLRequest) 
 			Error: "URL has expired",
 		}, nil
 	}
-	fmt.Printf("[DB FETCH] shortCode=%s\n", req.ShortCode)
+	s.Logger.Info("Database fetch", zap.String("shortCode", req.ShortCode))
 
 	// populate cache from db
 	s.setCacheFromModel(ctx, req.ShortCode, urlModel)
@@ -211,7 +217,7 @@ func (s *URLService) incrementClickCountAsync(shortCode string) {
 	defer cancel()
 
 	if err := s.repo.IncrementClickCount(ctx, shortCode); err != nil {
-		fmt.Printf("failed to increment click count for %s: %v\n", shortCode, err)
+		s.Logger.Error("Failed to increment click count", zap.String("shortCode", shortCode), zap.Error(err))
 	}
 }
 
@@ -222,13 +228,14 @@ func (s *URLService) setCacheFromModel(ctx context.Context, shortCode string, ur
 
 	data, err := json.Marshal(urlModel)
 	if err != nil {
-		fmt.Printf("Failed to marshal cache data for %s: %v\n", shortCode, err)
+		s.Logger.Error("Failed to marshal cache data", zap.String("shortCode", shortCode), zap.Error(err))
 		return fmt.Errorf("failed to marshal cache data for %s: %w", shortCode, err)
 	}
 
 	// Set cache with TTL
 	err = s.cache.Set(ctx, cacheKey, data, 10*time.Minute).Err()
 	if err != nil {
+		s.Logger.Error("Failed to set cache", zap.String("shortCode", shortCode), zap.Error(err))
 		return fmt.Errorf("failed to set cache for %s: %w", shortCode, err)
 	}
 
@@ -244,14 +251,14 @@ func (s *URLService) getFromCache(ctx context.Context, shortCode string) (*model
 	}
 	if err != nil {
 		// Log cache error but don't fail the request
-		fmt.Printf("Cache get error for %s: %v\n", shortCode, err)
+		s.Logger.Warn("Cache get error", zap.String("shortCode", shortCode), zap.Error(err))
 		return nil, fmt.Errorf("cache error")
 	}
 
 	var urlModel models.URL
 	err = json.Unmarshal([]byte(result), &urlModel)
 	if err != nil {
-		fmt.Printf("Cache unmarshal error for %s: %v\n", shortCode, err)
+		s.Logger.Error("Failed to unmarshal cached URL", zap.String("shortCode", shortCode), zap.Error(err))
 		return nil, fmt.Errorf("cache unmarshal error")
 	}
 
@@ -261,6 +268,6 @@ func (s *URLService) removeFromCache(ctx context.Context, shortCode string) {
 	cacheKey := fmt.Sprintf("url:%s", shortCode)
 	err := s.cache.Del(ctx, cacheKey).Err()
 	if err != nil {
-		fmt.Printf("Failed to remove from cache %s: %v\n", shortCode, err)
+		s.Logger.Error("Failed to remove from cache", zap.String("shortCode", shortCode), zap.Error(err))
 	}
 }

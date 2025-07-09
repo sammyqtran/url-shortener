@@ -11,6 +11,7 @@ import (
 
 	pb "github.com/sammyqtran/url-shortener/proto"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -162,6 +163,7 @@ func TestHandleGetOriginalURL(t *testing.T) {
 			mockClient := new(MockURLServiceClient)
 			server := &GatewayServer{
 				GrpcClient: mockClient,
+				Logger:     zap.NewNop(),
 			}
 
 			if tc.expectGrpcCall {
@@ -242,6 +244,7 @@ func TestHandleCreateShortURL(t *testing.T) {
 			mockClient := new(MockURLServiceClient)
 			server := &GatewayServer{
 				GrpcClient: mockClient,
+				Logger:     zap.NewNop(),
 			}
 			if tc.expectGrpcCall {
 				mockClient.
@@ -275,6 +278,7 @@ func TestPublishCreate(t *testing.T) {
 	service := &GatewayServer{
 		GrpcClient: mockClient,
 		Publisher:  mockPublisher,
+		Logger:     zap.NewNop(),
 	}
 
 	mockClient.
@@ -309,6 +313,7 @@ func TestPublishAccess(t *testing.T) {
 	service := &GatewayServer{
 		GrpcClient: mockClient,
 		Publisher:  mockPublisher,
+		Logger:     zap.NewNop(),
 	}
 
 	mockClient.

@@ -3,21 +3,22 @@ package queue
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/sammyqtran/url-shortener/internal/events"
+	"go.uber.org/zap"
 )
 
 // RedisStreamsQueue implements MessageQueue using Redis Streams
 type RedisStreamsQueue struct {
 	client *redis.Client
 	config *StreamConfig
+	logger *zap.Logger
 }
 
 // constructor for a new message queue using Redis Streams
-func NewRedisStreamsQueue(client *redis.Client, config *StreamConfig) *RedisStreamsQueue {
+func NewRedisStreamsQueue(client *redis.Client, config *StreamConfig, logger *zap.Logger) *RedisStreamsQueue {
 
 	if config == nil {
 		config = DefaultStreamConfig()
@@ -26,6 +27,7 @@ func NewRedisStreamsQueue(client *redis.Client, config *StreamConfig) *RedisStre
 	return &RedisStreamsQueue{
 		client: client,
 		config: config,
+		logger: logger,
 	}
 }
 
@@ -41,6 +43,7 @@ func (r *RedisStreamsQueue) Publish(ctx context.Context, stream string, event in
 	case events.URLAccessedEventData:
 		eventMap = e.ToMap()
 	default:
+		r.logger.Error("Unsupported event type", zap.String("eventType", fmt.Sprintf("%T", event)))
 		return fmt.Errorf("unsupported event type: %T", event)
 	}
 
@@ -52,10 +55,11 @@ func (r *RedisStreamsQueue) Publish(ctx context.Context, stream string, event in
 
 	_, err := r.client.XAdd(ctx, args).Result()
 	if err != nil {
+		r.logger.Error("Failed to publish event to stream", zap.String("stream", stream), zap.Error(err))
 		return fmt.Errorf("failed to publish event to stream %s: %w", stream, err)
 	}
 
-	log.Printf("Published event to stream %s: %s", stream, eventMap["event_type"])
+	r.logger.Info("Published event to stream", zap.String("stream", stream), zap.String("event_type", eventMap["event_type"].(string)))
 	return nil
 }
 
@@ -64,15 +68,16 @@ func (r *RedisStreamsQueue) Subscribe(ctx context.Context, stream string, consum
 	err := r.createConsumerGroup(ctx, stream, consumerGroup)
 
 	if err != nil {
-		return fmt.Errorf("failed to carete consumer group: %w", err)
+		r.logger.Error("Failed to create consumer group", zap.Error(err))
+		return fmt.Errorf("failed to create consumer group: %w", err)
 	}
 
-	log.Printf("starting consumer %s in group %s for stream %s", consumer, consumerGroup, stream)
+	r.logger.Info("Starting consumer in group for stream", zap.String("consumer", consumer), zap.String("consumerGroup", consumerGroup), zap.String("stream", stream))
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("Confsumer %s stopping due to context cancellation", consumer)
+			r.logger.Info("Consumer stopping due to context cancellation", zap.String("consumer", consumer))
 			return ctx.Err()
 
 		default:
@@ -89,7 +94,7 @@ func (r *RedisStreamsQueue) Subscribe(ctx context.Context, stream string, consum
 				if err == redis.Nil {
 					continue
 				}
-				log.Printf("error reading from stream: %v", err)
+				r.logger.Error("Error reading from stream", zap.Error(err))
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -98,14 +103,14 @@ func (r *RedisStreamsQueue) Subscribe(ctx context.Context, stream string, consum
 				for _, message := range streamData.Messages {
 					err := r.processMessage(ctx, message, handler)
 					if err != nil {
-						log.Printf("Error processing message %s: %v", message.ID, err)
+						r.logger.Error("Error processing message", zap.String("messageID", message.ID), zap.Error(err))
 						continue
 					}
 
 					// Acknowledge message
 					err = r.client.XAck(ctx, stream, consumerGroup, message.ID).Err()
 					if err != nil {
-						log.Printf("Error acknowledging message %s: %v", message.ID, err)
+						r.logger.Error("Error acknowledging message", zap.String("messageID", message.ID), zap.Error(err))
 					}
 				}
 			}
@@ -122,6 +127,7 @@ func (r *RedisStreamsQueue) createConsumerGroup(ctx context.Context, stream, gro
 	if err != nil {
 		// If group already exists, that's fine
 		if err.Error() == "BUSYGROUP Consumer Group name already exists" {
+			r.logger.Info("Consumer Group name already exists", zap.String("group", group))
 			return nil
 		}
 
@@ -135,15 +141,18 @@ func (r *RedisStreamsQueue) createConsumerGroup(ctx context.Context, stream, gro
 				},
 			}).Result()
 			if err != nil {
+				r.logger.Error("Failed to initalize stream", zap.Error(err))
 				return fmt.Errorf("failed to initialize stream: %w", err)
 			}
 
 			// Now create the consumer group
 			err = r.client.XGroupCreate(ctx, stream, group, "0").Err()
 			if err != nil {
+				r.logger.Error("Failed to create consumer group after stream init", zap.Error(err))
 				return fmt.Errorf("failed to create consumer group after stream init: %w", err)
 			}
 		} else {
+			r.logger.Error("Failed to create consumer group", zap.Error(err))
 			return fmt.Errorf("failed to create consumer group: %w", err)
 		}
 	}
@@ -156,6 +165,7 @@ func (r *RedisStreamsQueue) processMessage(ctx context.Context, message redis.XM
 	// Extract event type
 	eventTypeStr, ok := message.Values["event_type"].(string)
 	if !ok {
+		r.logger.Error("Missing or invalid event_type in message", zap.String("messageID", message.ID))
 		return fmt.Errorf("missing or invalid event_type in message")
 	}
 
@@ -164,6 +174,7 @@ func (r *RedisStreamsQueue) processMessage(ctx context.Context, message redis.XM
 	// Extract event data
 	dataStr, ok := message.Values["data"].(string)
 	if !ok {
+		r.logger.Error("missing or invalid data in message")
 		return fmt.Errorf("missing or invalid data in message")
 	}
 
