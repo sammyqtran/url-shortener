@@ -1,4 +1,41 @@
-# A URL Shortener
+# URL Shortener - Distributed Microservices Platform
+
+A Go-based microservices URL shortener.
+
+## Overview
+
+A production-simulated microservices platform written in Go, containerized with Docker, deployed to Kubernetes, and tested via CI/CD. Includes REST/gRPC interfaces, asynchronous event logging, and observability hooks.
+
+## Project Structure
+```
+url-shortener/
+├── cmd/                         # Entry points for services and clients
+│   ├── gateway-service/         # REST API → gRPC gateway
+│   ├── url-service/             # Core URL logic and persistence
+│   ├── analytics-service/       # Asynchronous event consumer
+│   └── test-client/             # Manual and integration test clients
+├── proto/                       # gRPC protobufs
+├── internal/                    # Core application code
+│   ├── analytics/               # Analytics logic and tests
+│   ├── database/                # Database connection & handling
+│   ├── events/                  # Event definitions and handling
+│   ├── gateway/                 # Gateway handlers and tests
+│   ├── models/                  # Data models
+│   ├── queue/                   # Queue interface and Redis streams
+│   ├── repository/              # Data repositories (including Postgres)
+│   └── service/                 # URL Service logic and tests
+├── deployments/                 # Kubernetes manifests
+├── .github/workflows/           # GitHub Actions CI config
+├── docker-compose.yml           # Local container orchestration
+└── README.md                    # Project overview
+```
+
+## Tech Stack:
+- Language: Go
+- Protocol: REST, gRPC
+- Data & Messaging: PostgreSQL, Redis Streams
+- Infra & Platform: Docker, Kubernetes, GitHub Actions
+- Testing: Unit tests, integration test clients, CI coverage
 
 ## Architecture
 
@@ -10,72 +47,61 @@
 - **PostgreSQL**: Stores URL mappings and access statistics.
 
 
-### Tech Stack:
-- Language: Go
-- Protocol: gRPC, REST
-- Infrastructure: Docker, Kubernetes, Redis Streams, PostgreSQL
-- CI: Github Actions
-
 ### Data Flow:
 - HTTP REST request -> Gateway -> gRPC -> url-service
 - gateway-service publishes access events to Redis Stream → analytics-service consumes and logs them
 
 ## Intent 
-- Simulate a production grade microservices architecture in a monorepo setup.
-- Practice platform engineering skills including service orchestration, containerization, CI/CD, and Kubernetes deployment.
-- Implement real world patterns: decoupled services, asynchronous event processing, and infrastructure-as-code.
-- Exercise local Kubernetes and CI pipelines to simulate operational deployment workflows.
+- Build realistic backend infra with decoupled components
+- Apply containerization, orchestration, and CI/CD principles
+- Practice patterns like event-driven design and infra-as-code
+- Simulate scalable deployment with K8s and Prometheus-ready endpoints
 
+## Running the Project
 
-## Quick Summary 
+### Local: Docker Compose
 
-Transforms a long URL into a unique, shortened shortcode that redirects to the original resource.
-
-## Prerequisites
-
-If you would like to build, run, and test this project with docker compose you will need to have the following items installed
+#### Prerequisites
 
 1. [Docker](https://docs.docker.com/get-docker/) 
 
 2. [Docker Compose](https://docs.docker.com/compose/install/) (may be included with docker)
 
-## Endpoints:
+#### Run Services
 
-The fields needed for the GRPC endpoints for url-service can be seen in proto/url_service.proto
+To run all of the services you can use the following docker compose command.
 
-    rpc CreateShortURL(CreateURLRequest) returns (CreateURLResponse);
-    
-    rpc GetOriginalURL(GetURLRequest) returns (GetURLResponse);
-    
-    rpc HealthCheck(HealthRequest) returns (HealthResponse);
-
-
-## Docker Instructions
-
-To run the url-service you can use the docker compose command to spin up the url service as well as the postgres database.
-
-`
+```
 docker compose up -d --build
-`
+```
 
+### Local: Kubernetes: Minikube
 
+#### Prerequisites
+
+[Minikube](https://minikube.sigs.k8s.io)
+
+[kubectl](https://kubernetes.io/docs/tasks/tools/)
+
+#### Run Services
+
+The following commands will run all of the services and open the port to your local machine for testing.
+```
+minikube start
+kubectl apply -f deployments/
+kubectl port-forward svc/gateway-service 8080:8080
+```
 
 ## Testing
 
-Current unit tests exists for url-service under internal/service/url-service_test.go.
+### Integration Test Clients
 
-End to end testing exists under cmd/test-client/main.go
+Run after services are up. Confirm with `docker ps`, or `kubectl get pods`
 
-To test first ensure url-service and postgres are running. 
-`
-docker ps
-`
-If they are not running then run the command to build the docker images and start them
-
-`
-docker compose up -d --build
-`
-
+To run all integration tests.
+```
+./testingscripts/run-test-clients.sh
+```
 To run the test client run this command
 
 `
@@ -94,84 +120,55 @@ To see an HTML report
 go tool cover -html=coverage.out -o coverage.html
 `
 
-For full validation server needs to be hosted and endpoints tested manually end to end.
-
-### Example Usage (Minimal)
-
-Currently only the internal URL service exists. You can create and retrieve URLs by accessing the service through gRPC.
-
-1. Build images and spin up docker containers  (See Docker Instructions)
-
-2. Health Check
-
-`
-grpcurl -plaintext -d '{}' localhost:50051 urlservice.URLService.HealthCheck
-`
-
-3. Create a short URL (you need to pass a URL as well as a user id)
 
 
-`
+## Endpoints:
+
+Defined in proto/url_service.proto
+
+    rpc CreateShortURL(CreateURLRequest) returns (CreateURLResponse);
+    
+    rpc GetOriginalURL(GetURLRequest) returns (GetURLResponse);
+    
+    rpc HealthCheck(HealthRequest) returns (HealthResponse);
+
+Example usage with grpcurl:
+```
 grpcurl -plaintext -d '{"original_url":"https://example.com","user_id":"user123"}' localhost:50051 urlservice.URLService.CreateShortURL
-`
-
-Response:
-
-`
-{
-  "shortCode": "UBs3cx",
-  "shortUrl": "http://localhost:8080/UBs3cx",
-  "success": true
-}
-`
-
-4. Retrieve the original URL from the short code generated 
-
-`
-grpcurl -plaintext -d '{"short_code":"UBs3cx"}' localhost:50051 urlservice.URLService.G
-etOriginalURL
-`
-
-Response: 
-
-`
-{
-  "originalUrl": "https://example.com",
-  "found": true
-}
-`
-
-## Goals and Roadmap 
-
-### New Goals (Distributed Architecture)
-Current goals are to build out this project with distributed architecture.
-There will be 3 services
-
-1. url-service 
-    - internal service handling URL creation and deletion
-    - database interactions and URL logic
-2. gateway-service
-    - external facing REST API
-    - translates REST requests to gRPC calls to url-service
-    - send events to analytics service on URL hits
-3. analytics-service
-    - internal service that will track user clicks and usage
-    - aggregate data for reporting and insights.
+```
 
 
-### Sprint Plan
-Sprint 1: Microservice architecture split from monolith (Complete)
+## Roadmap 
 
-Sprint 2: gRPC server setup for internal communication (Complete)
+### Completed 
+- Core shortening logic (in-memory → Postgres + Redis Cache)
 
-Sprint 3: url-service implementation with full DB integration (Complete)
+- Microservice decomposition
 
-Sprint 4: gateway-service implementation with REST to gRPC translation (Completed)
+- gRPC + REST translation via gateway
 
-Sprint 5: analytics-service implementation and event pipeline setup (Completed)
+- Redis Streams → analytics event processing
 
-Sprint 6: User authentication and authorization service (Pushed back)
+- CI/CD pipeline + integration testing
 
-Sprint 7: Cloud deployment with CI/CD pipelines and monitoring (In progress)
+- Kubernetes deployment manifests
 
-Sprint 8: Performance optimization and horizontal scaling of services
+### In Progress
+- Prometheus metrics exposure
+
+- Service resource tuning for K8s
+
+- Observability dashboards
+
+## Appendix
+| Method | Path           | Description              |
+| ------ | -------------- | ------------------------ |
+| POST   | `/create`      | Create shortened URL     |
+| GET    | `/{shortcode}` | Redirect to original URL |
+| GET    | `/healthz`     | Service health check     |
+
+Example usage:
+
+```
+curl -X POST -H "Content-Type: application/json" -d '{"url": "https://example.com"}' http://localhost:8080/create
+```
