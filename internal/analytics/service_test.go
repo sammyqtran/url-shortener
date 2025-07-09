@@ -8,6 +8,7 @@ import (
 
 	"github.com/sammyqtran/url-shortener/internal/events"
 	"github.com/sammyqtran/url-shortener/internal/queue"
+	"go.uber.org/zap"
 )
 
 type MockMessageQueue struct {
@@ -45,6 +46,7 @@ func TestHandleURLCreated(t *testing.T) {
 	mockQueue := new(MockMessageQueue)
 	service := &AnalyticsService{
 		MessageQueue: mockQueue,
+		Logger:       zap.NewNop(),
 	}
 	event := events.URLCreatedEventData{
 		BaseEvent: events.BaseEvent{
@@ -84,6 +86,7 @@ func TestHandleURLAccessed(t *testing.T) {
 	mockQueue := new(MockMessageQueue)
 	service := &AnalyticsService{
 		MessageQueue: mockQueue,
+		Logger:       zap.NewNop(),
 	}
 	event := events.URLAccessedEventData{
 		BaseEvent: events.BaseEvent{
@@ -124,6 +127,7 @@ func TestHandleEvent(t *testing.T) {
 	mockQueue := new(MockMessageQueue)
 	service := &AnalyticsService{
 		MessageQueue: mockQueue,
+		Logger:       zap.NewNop(),
 	}
 	event := events.URLCreatedEventData{
 		BaseEvent: events.BaseEvent{
@@ -179,6 +183,7 @@ func TestStart(t *testing.T) {
 	mockQueue := new(MockMessageQueue)
 	service := &AnalyticsService{
 		MessageQueue: mockQueue,
+		Logger:       zap.NewNop(),
 	}
 
 	err := service.Start(context.Background())

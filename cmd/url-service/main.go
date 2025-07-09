@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"log"
 	"net"
 	"os"
 	"strconv"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
@@ -19,6 +19,10 @@ import (
 )
 
 func main() {
+	// Structured Logging
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
 	// database configuration from environment variables
 	dbConfig := database.Config{
 		Host:         getEnv("DB_HOST", "postgres"),
@@ -34,21 +38,21 @@ func main() {
 	// connect to the database
 	db, err := database.NewPostgresConnection(dbConfig)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatal("Failed to connect to database", zap.Error(err))
 	}
 	defer db.Close()
 
-	log.Println("Connected to database successfully")
+	logger.Info("Connected to database successfully")
 
 	// run migrations
 	if err := database.RunMigrations(db); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logger.Fatal("Failed to run migrations", zap.Error(err))
 	}
 
-	log.Println("Database migrations applied successfully")
+	logger.Info("Database migrations applied successfully")
 
 	// create a new URL repository instance
-	urlRepo := postgres.NewPostgresURLRepository(db)
+	urlRepo := postgres.NewPostgresURLRepository(db, logger)
 
 	// Create a Redis client and connect to Redis
 	cache := redis.NewClient(&redis.Options{
@@ -60,16 +64,15 @@ func main() {
 	defer cancel()
 
 	if err := cache.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
-
+		logger.Fatal("Failed to connect to Redis", zap.Error(err))
 	}
-	log.Println("Connected to Redis successfully")
+	logger.Info("Connected to Redis successfully")
 
 	// create service instance (uses default baseURL from service package)
-	urlService := service.NewURLService(urlRepo, cache)
+	urlService := service.NewURLService(urlRepo, cache, logger)
 
 	// create a new gRPC server
-	log.Println("Starting gRPC server on port 50051...")
+	logger.Info("Starting gRPC server on port 50051...")
 	grpcServer := grpc.NewServer()
 
 	pb.RegisterURLServiceServer(grpcServer, urlService)
@@ -79,14 +82,18 @@ func main() {
 	port := getEnv("GRPC_PORT", "50051")
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		log.Fatalf("Failed to listen on port %s: %v", port, err)
+		logger.Fatal("Failed to listen on port", zap.String("port", port), zap.Error(err))
 	}
-	log.Printf("gRPC server listening on port %s", port)
-	log.Printf("Database: %s@%s:%d/%s", dbConfig.User, dbConfig.Host, dbConfig.Port, dbConfig.DatabaseName)
-
+	logger.Info("gRPC server listening on port", zap.String("port", port))
+	logger.Info("Database connection info",
+		zap.String("user", dbConfig.User),
+		zap.String("host", dbConfig.Host),
+		zap.Int("port", dbConfig.Port),
+		zap.String("database", dbConfig.DatabaseName),
+	)
 	// serve the gRPC server
 	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("Failed to serve gRPC server: %v", err)
+		logger.Fatal("Failed to serve gRPC server", zap.Error(err))
 	}
 }
 

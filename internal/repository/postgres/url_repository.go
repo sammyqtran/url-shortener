@@ -7,19 +7,22 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"go.uber.org/zap"
 
 	"github.com/sammyqtran/url-shortener/internal/models"
 	"github.com/sammyqtran/url-shortener/internal/repository"
 )
 
 type postgresURLRepository struct {
-	db *sqlx.DB
+	db     *sqlx.DB
+	logger *zap.Logger
 }
 
 // NewPostgresURLRepository creates a new PostgreSQL URL repository
-func NewPostgresURLRepository(db *sqlx.DB) repository.URLRepository {
+func NewPostgresURLRepository(db *sqlx.DB, logger *zap.Logger) repository.URLRepository {
 	return &postgresURLRepository{
-		db: db,
+		db:     db,
+		logger: logger,
 	}
 }
 
@@ -34,6 +37,7 @@ func (r *postgresURLRepository) Create(ctx context.Context, url *models.URL) err
 		Scan(&url.ID, &url.CreatedAt, &url.UpdatedAt, &url.ClickCount)
 
 	if err != nil {
+		r.logger.Error("Failed to create row in database", zap.Error(err))
 		return fmt.Errorf("failed to create URL: %w", err)
 	}
 
@@ -50,6 +54,7 @@ func (r *postgresURLRepository) GetByShortCode(ctx context.Context, shortCode st
 
 	err := r.db.GetContext(ctx, &url, query, shortCode)
 	if err != nil {
+		r.logger.Error("Error retrieving shortCode", zap.String("shortCode", shortCode), zap.Error(err))
 		if err == sql.ErrNoRows {
 			return nil, repository.ErrURLNotFound
 		}
@@ -69,6 +74,7 @@ func (r *postgresURLRepository) GetByID(ctx context.Context, id int64) (*models.
 
 	err := r.db.GetContext(ctx, &url, query, id)
 	if err != nil {
+		r.logger.Error("Error retrieving rows by ID", zap.Int64("id", id), zap.Error(err))
 		if err == sql.ErrNoRows {
 			return nil, repository.ErrURLNotFound
 		}
@@ -87,11 +93,13 @@ func (r *postgresURLRepository) Update(ctx context.Context, url *models.URL) err
 
 	result, err := r.db.ExecContext(ctx, query, url.OriginalURL, url.ExpiresAt, url.ShortCode)
 	if err != nil {
+		r.logger.Error("Error updating URL", zap.Error(err))
 		return fmt.Errorf("failed to update URL: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		r.logger.Error("Error getting affected rows", zap.Error(err))
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
@@ -107,11 +115,13 @@ func (r *postgresURLRepository) Delete(ctx context.Context, shortCode string) er
 
 	result, err := r.db.ExecContext(ctx, query, shortCode)
 	if err != nil {
+		r.logger.Error("Error deleting URL", zap.Error(err))
 		return fmt.Errorf("failed to delete URL: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		r.logger.Error("Error getting affected rows", zap.Error(err))
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
@@ -131,11 +141,13 @@ func (r *postgresURLRepository) IncrementClickCount(ctx context.Context, shortCo
 
 	result, err := r.db.ExecContext(ctx, query, shortCode)
 	if err != nil {
+		r.logger.Error("Error incrementing click count", zap.Error(err))
 		return fmt.Errorf("failed to increment click count: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		r.logger.Error("Error getting affected rows", zap.Error(err))
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
@@ -161,6 +173,7 @@ func (r *postgresURLRepository) ListURLs(ctx context.Context, limit, offset int)
 
 	err := r.db.SelectContext(ctx, &urls, query, limit, offset)
 	if err != nil {
+		r.logger.Error("Error getting rows", zap.Error(err))
 		return nil, fmt.Errorf("failed to list URLs: %w", err)
 	}
 
@@ -173,6 +186,7 @@ func (r *postgresURLRepository) IsShortCodeExists(ctx context.Context, shortCode
 
 	err := r.db.GetContext(ctx, &exists, query, shortCode)
 	if err != nil {
+		r.logger.Error("Error checking existence", zap.Error(err))
 		return false, fmt.Errorf("failed to check if short code exists: %w", err)
 	}
 

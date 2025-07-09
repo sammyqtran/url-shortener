@@ -14,6 +14,7 @@ import (
 	pb "github.com/sammyqtran/url-shortener/proto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 type MockRepo struct {
@@ -87,6 +88,7 @@ func TestGenerateShortCode(t *testing.T) {
 	service := &URLService{
 		repo:    mockRepo,
 		baseURL: "https://localhost:8080",
+		Logger:  zap.NewNop(),
 	}
 
 	mockRepo.On("IsShortCodeExists", mock.Anything, mock.AnythingOfType("string")).Return(false, nil)
@@ -103,6 +105,7 @@ func TestGenerateShortCode_FailedGeneration(t *testing.T) {
 	service := &URLService{
 		repo:    mockRepo,
 		baseURL: "https://localhost:8080",
+		Logger:  zap.NewNop(),
 	}
 
 	mockRepo.On("IsShortCodeExists", mock.Anything, mock.AnythingOfType("string")).Return(true, nil)
@@ -116,6 +119,7 @@ func TestGenerateShortCode_FailedGeneration(t *testing.T) {
 	service = &URLService{
 		repo:    mockRepo,
 		baseURL: "https://localhost:8080",
+		Logger:  zap.NewNop(),
 	}
 
 	mockRepo.On("IsShortCodeExists", mock.Anything, mock.AnythingOfType("string")).Return(false, fmt.Errorf("random error"))
@@ -173,6 +177,7 @@ func TestValidateURL(t *testing.T) {
 			service := &URLService{
 				repo:    mockRepo,
 				baseURL: "https://localhost:8080",
+				Logger:  zap.NewNop(),
 			}
 			err := service.validateURL(tc.url)
 
@@ -193,6 +198,7 @@ func TestHealthCheck(t *testing.T) {
 	service := &URLService{
 		repo:    repo,
 		baseURL: "https://localhost:8080",
+		Logger:  zap.NewNop(),
 	}
 
 	healthRequest := &pb.HealthRequest{}
@@ -348,6 +354,7 @@ func TestGetOriginalURL(t *testing.T) {
 				repo:    repo,
 				baseURL: "https://localhost:8080",
 				cache:   db,
+				Logger:  zap.NewNop(),
 			}
 
 			if tt.mockReturn != nil || tt.mockError != nil {
@@ -485,6 +492,7 @@ func TestCreateShortURL(t *testing.T) {
 				baseURL:       "https://localhost:8080/",
 				codeGenerator: tt.codeGenerator,
 				cache:         cache,
+				Logger:        zap.NewNop(),
 			}
 
 			resp, err := service.CreateShortURL(context.Background(), tt.request)
@@ -509,6 +517,7 @@ func TestGetFromCache_CacheHit(t *testing.T) {
 		repo:    repo,
 		cache:   db,
 		baseURL: "https://localhost:8080",
+		Logger:  zap.NewNop(),
 	}
 
 	urlModel := &models.URL{
@@ -533,8 +542,9 @@ func TestGetFromCache_CacheHit(t *testing.T) {
 func TestGetFromCache_CacheMiss(t *testing.T) {
 	db, mock := redismock.NewClientMock()
 	service := &URLService{
-		repo:  new(MockRepo),
-		cache: db,
+		repo:   new(MockRepo),
+		cache:  db,
+		Logger: zap.NewNop(),
 	}
 
 	mock.ExpectGet("url:abc123").RedisNil()
@@ -549,8 +559,9 @@ func TestGetFromCache_CacheMiss(t *testing.T) {
 func TestGetFromCache_CachErr(t *testing.T) {
 	db, mock := redismock.NewClientMock()
 	service := &URLService{
-		repo:  new(MockRepo),
-		cache: db,
+		repo:   new(MockRepo),
+		cache:  db,
+		Logger: zap.NewNop(),
 	}
 
 	mock.ExpectGet("url:abc123").SetErr(fmt.Errorf("redis error"))
@@ -564,8 +575,9 @@ func TestGetFromCache_CachErr(t *testing.T) {
 func TestSetCacheFromModel(t *testing.T) {
 	db, mock := redismock.NewClientMock()
 	service := &URLService{
-		repo:  new(MockRepo),
-		cache: db,
+		repo:   new(MockRepo),
+		cache:  db,
+		Logger: zap.NewNop(),
 	}
 
 	urlModel := &models.URL{

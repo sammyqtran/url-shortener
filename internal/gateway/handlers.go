@@ -3,22 +3,27 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/sammyqtran/url-shortener/internal/queue"
 	pb "github.com/sammyqtran/url-shortener/proto"
+	"go.uber.org/zap"
 )
 
 type GatewayServer struct {
 	GrpcClient pb.URLServiceClient
 	Publisher  queue.EventPublisher
+	Logger     *zap.Logger
 }
 
 func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Request) {
-
+	s.Logger.Info("Incoming request",
+		zap.String("method", r.Method),
+		zap.String("path", r.URL.Path),
+		zap.String("client_ip", s.getClientIP(r)),
+	)
 	defer r.Body.Close()
 
 	var req struct {
@@ -27,7 +32,14 @@ func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Requ
 
 	jsonErr := json.NewDecoder(r.Body).Decode(&req)
 
-	if jsonErr != nil || req.URL == "" {
+	if jsonErr != nil {
+		s.Logger.Error("Failed to decode JSON request", zap.Error(jsonErr))
+		respondWithError(w, http.StatusBadRequest, "bad request")
+		return
+	}
+
+	if req.URL == "" {
+		s.Logger.Warn("Empty URL in request")
 		respondWithError(w, http.StatusBadRequest, "bad request")
 		return
 	}
@@ -43,6 +55,7 @@ func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Requ
 	response, err := s.GrpcClient.CreateShortURL(ctx, request)
 
 	if err != nil {
+		s.Logger.Error("gRPC CreateShortURL failed", zap.Error(err))
 		respondWithError(w, http.StatusInternalServerError, "Failed to create short URL")
 		return
 	}
@@ -53,7 +66,7 @@ func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Requ
 			ctx := context.Background()
 			err := s.Publisher.PublishURLCreated(ctx, response.ShortCode, req.URL, s.getClientInfo(r))
 			if err != nil {
-				log.Printf("Failed to publish URL created event: %v", err)
+				s.Logger.Error("Failed to publish URL created event", zap.Error(err))
 			}
 		}()
 	}
@@ -65,10 +78,15 @@ func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *GatewayServer) HandleGetOriginalURL(w http.ResponseWriter, r *http.Request) {
-
+	s.Logger.Info("Incoming request",
+		zap.String("method", r.Method),
+		zap.String("path", r.URL.Path),
+		zap.String("client_ip", s.getClientIP(r)),
+	)
 	shortCode := strings.TrimPrefix(r.URL.Path, "/")
 
 	if shortCode == "" || shortCode == "create" || shortCode == "healthz" {
+		s.Logger.Warn("Invalid shortCode path requested", zap.String("shortCode", shortCode))
 		http.NotFound(w, r)
 		return
 	}
@@ -83,6 +101,7 @@ func (s *GatewayServer) HandleGetOriginalURL(w http.ResponseWriter, r *http.Requ
 	response, err := s.GrpcClient.GetOriginalURL(ctx, request)
 
 	if err != nil {
+		s.Logger.Error("gRPC GetOriginalURL failed", zap.Error(err))
 		respondWithError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -105,7 +124,7 @@ func (s *GatewayServer) HandleGetOriginalURL(w http.ResponseWriter, r *http.Requ
 				r.Header.Get("Referer"),
 			)
 			if err != nil {
-				log.Printf("Failed to publish URL accessed event: %v", err)
+				s.Logger.Error("Failed to publish URL accessed event", zap.Error(err))
 			}
 		}()
 	}

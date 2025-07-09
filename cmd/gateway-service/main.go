@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -12,11 +11,16 @@ import (
 	"github.com/sammyqtran/url-shortener/internal/gateway"
 	"github.com/sammyqtran/url-shortener/internal/queue"
 	pb "github.com/sammyqtran/url-shortener/proto"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
+
+	// Structured Logging
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
 
 	redisAddr := getEnv("REDIS_ADDR", "redis:6379")
 	redisPassword := getEnv("REDIS_PASSWORD", "")
@@ -24,12 +28,12 @@ func main() {
 
 	conn, err := grpc.NewClient("url-service:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal("Error connecting to Redis", zap.Error(err))
 	}
 	defer conn.Close()
 
 	// Connect to Redis for message queue
-	log.Printf("Connecting to Redis at %s", redisAddr)
+	logger.Info("Conntecting to Redis at", zap.String("redisAddr", redisAddr))
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
 		Password: redisPassword,
@@ -41,13 +45,13 @@ func main() {
 	defer cancel()
 	_, err = redisClient.Ping(ctx).Result()
 	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+		logger.Fatal("Failed to Connect to Redis:", zap.Error(err))
 	}
-	log.Println("Successfully connected to Redis")
+	logger.Info("Successfully connected to Redis")
 
 	// Setup message queue
 	streamConfig := queue.DefaultStreamConfig()
-	messageQueue := queue.NewRedisStreamsQueue(redisClient, streamConfig)
+	messageQueue := queue.NewRedisStreamsQueue(redisClient, streamConfig, logger)
 	publisher := queue.NewPublisher(messageQueue, streamConfig.URLEventsStream)
 
 	grpcClient := pb.NewURLServiceClient(conn)
@@ -55,6 +59,7 @@ func main() {
 	server := &gateway.GatewayServer{
 		GrpcClient: grpcClient,
 		Publisher:  publisher,
+		Logger:     logger,
 	}
 
 	r := mux.NewRouter()
@@ -63,8 +68,12 @@ func main() {
 	r.HandleFunc("/healthz", server.HandleHealthCheck).Methods("GET")
 	r.HandleFunc("/{shortCode}", server.HandleGetOriginalURL).Methods("GET")
 
-	log.Println("Gateway service listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	logger.Info("Gateway service listening on :8080")
+	err = http.ListenAndServe(":8080", r)
+	if err != nil {
+		logger.Fatal("HTTP server failed", zap.Error(err))
+	}
+
 }
 
 // getEnv gets environment variable with default value
