@@ -15,7 +15,7 @@ import (
 
 func main() {
 	// Configuration
-	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
+	redisAddr := getEnv("REDIS_ADDR", "redis:6379")
 	redisPassword := getEnv("REDIS_PASSWORD", "")
 	redisDB := 0
 
