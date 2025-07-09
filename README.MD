@@ -86,10 +86,12 @@ docker compose up -d --build
 #### Run Services
 
 The following commands will run all of the services and open the port to your local machine for testing.
+You will need to port forward url-service to directly test gRPC endpoints. (Done in test clients)
 ```
 minikube start
 kubectl apply -f deployments/
 kubectl port-forward svc/gateway-service 8080:8080
+kubectl port-forward svc/url-service 50051:50051 
 ```
 
 ## Testing
