@@ -89,6 +89,14 @@ The following commands will run all of the services and open the port to your lo
 You will need to port forward url-service to directly test gRPC endpoints. (Done in test clients)
 ```
 minikube start
+
+// build images
+eval $(minikube docker-env)
+docker build -t analytics-service:latest -f ./cmd/analytics-service/Dockerfile ./cmd/analytics-service
+docker build -t gateway-service:latest -f ./cmd/gateway-service/Dockerfile ./cmd/gateway-service
+docker build -t url-service:latest -f ./cmd/url-service/Dockerfile ./cmd/url-service
+
+// apply manifests and port forward if needed
 kubectl apply -f deployments/
 kubectl port-forward svc/gateway-service 8080:8080
 kubectl port-forward svc/url-service 50051:50051 
