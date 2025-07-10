@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "url-shortener.fullname" . }}-analytics-service
+  labels:
+    {{- include "url-shortener.labels" . | nindent 4}}
+spec:
+  replicas: {{.Values.analyticsService.replicaCount}}
+  selector:
+    matchLabels:
+      app: {{ include "url-shortener.fullname" . }}-analytics-service
+  template:
+    metadata:
+      labels:
+        app: {{ include "url-shortener.fullname" . }}-analytics-service
+    spec:
+      containers:
+      - name: analytics-service
+        image: "{{.Values.analyticsService.image.repository}}:{{.Values.analyticsService.image.tag}}"
+        imagePullPolicy: {{.Values.analyticsService.image.pullPolicy}}
+        env:
+        - name: REDIS_ADDR
+          value: "{{.Values.redis.address}}"
+        - name: REDIS_PASSWORD
+          value: "{{.Values.redis.password}}"

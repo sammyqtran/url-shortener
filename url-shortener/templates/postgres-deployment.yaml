@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "url-shortener.fullname" . }}-postgres
+  labels:
+    {{- include "url-shortener.labels" . | nindent 4}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "url-shortener.fullname" . }}-postgres
+  template:
+    metadata:
+      labels:
+        app: {{ include "url-shortener.fullname" . }}-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: "{{ .Values.postgres.image.repository}}:{{ .Values.postgres.image.tag }}"
+        env:
+          - name: POSTGRES_DB
+            value: {{ .Values.postgres.database  | quote  }}
+          - name: POSTGRES_USER
+            value: {{ .Values.postgres.user  | quote  }}
+          - name: POSTGRES_PASSWORD
+            value: {{ .Values.postgres.password  | quote  }}
+        ports:
+          - containerPort: {{ .Values.postgres.containerPort }}
+        volumeMounts:
+          - mountPath: {{ .Values.postgres.volume.mountPath  | quote }}
+            name: postgres-storage
+        readinessProbe:
+          exec:
+            command: {{ toJson .Values.postgres.readinessProbe.exec.command }}
+          initialDelaySeconds: {{ .Values.postgres.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.postgres.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.postgres.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.postgres.readinessProbe.failureThreshold }}
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: {{ .Values.postgres.volume.claimName | quote}}
