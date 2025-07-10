@@ -12,7 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        app: url-service
+        app: {{ include "url-shortener.fullname" .}}-url-service
     spec:
       containers:
       - name: url-service
