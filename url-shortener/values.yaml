@@ -153,7 +153,7 @@ urlService:
     initialDelaySeconds: 5
     periodSeconds: 10
   env:
-    DB_HOST: postgres
+    DB_HOST: dev-url-shortener-postgres
     DB_PORT: "5432"
     DB_USER: postgres
     DB_PASSWORD: password
@@ -161,7 +161,7 @@ urlService:
     DB_SSLMODE: disable   
 
 redis:
-  address: redis:6379
+  address: dev-url-shortener-redis:6379
   password: ""
   port: 6379
   image:
