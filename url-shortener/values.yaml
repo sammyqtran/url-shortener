@@ -158,7 +158,9 @@ urlService:
     DB_USER: postgres
     DB_PASSWORD: password
     DB_NAME: urlshortener
-    DB_SSLMODE: disable   
+    DB_SSLMODE: disable
+    REDIS_ADDR: dev-url-shortener-redis:6379 
+    REDIS_PASSWORD: "" 
 
 redis:
   address: dev-url-shortener-redis:6379
