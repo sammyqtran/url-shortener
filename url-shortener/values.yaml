@@ -149,6 +149,7 @@ urlService:
     tag: latest
     pullPolicy: IfNotPresent
   port: 50051
+  host: dev-url-shortener-url-service
   readinessProbe:
     initialDelaySeconds: 5
     periodSeconds: 10

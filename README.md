@@ -46,6 +46,7 @@ url-shortener/
 - **Redis**: Acts as the message broker using Redis Streams for event delivery.
 - **PostgreSQL**: Stores URL mappings and access statistics.
 
+![diagram](./images/diagram.png)
 
 ### Data Flow:
 - HTTP REST request -> Gateway -> gRPC -> url-service

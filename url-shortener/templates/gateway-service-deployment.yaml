@@ -30,5 +30,7 @@ spec:
           value: "{{ .Values.redis.address }}"
         - name: REDIS_PASSWORD
           value: "{{ .Values.redis.password }}"
+        - name: URL_SERVICE_HOST
+          value: "{{ .Values.urlService.host}}"
 
     

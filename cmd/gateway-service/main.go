@@ -26,7 +26,8 @@ func main() {
 	redisPassword := getEnv("REDIS_PASSWORD", "")
 	redisDB := 0
 
-	conn, err := grpc.NewClient("url-service:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	target := getEnv("URL_SERVICE_HOST", "url-service")
+	conn, err := grpc.NewClient(target+":50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Fatal("Error connecting to Redis", zap.Error(err))
 	}
