@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "url-shortener.fullname" . }}-gateway-service
+  labels:
+    {{- include "url-shortener.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "url-shortener.fullname" . }}-gateway-service
+  template:
+    metadata:
+      labels:
+        app: {{ include "url-shortener.fullname" . }}-gateway-service
+    spec:
+      containers:
+      - name: gateway-service
+        image: "{{.Values.gatewayService.image.repository}}:{{ .Values.gatewayService.image.tag }}"
+        ports:
+        - containerPort: {{ .Values.gatewayService.port }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.gatewayService.port }}
+          initialDelaySeconds: {{ .Values.gatewayService.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.gatewayService.readinessProbe.periodSeconds }}
+        imagePullPolicy: {{ .Values.gatewayService.image.imagePullPolicy }}
+        env:
+        - name: REDIS_ADDR
+          value: "{{ .Values.redis.address }}"
+        - name: REDIS_PASSWORD
+          value: "{{ .Values.redis.password }}"
+        - name: URL_SERVICE_HOST
+          value: "{{ .Values.urlService.host}}"
+
+    

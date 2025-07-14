@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "url-shortener.fullname" .}}-url-service
+  labels:
+    {{- include "url-shortener.labels" . | nindent 4}}
+spec:
+  replicas: {{ .Values.urlService.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "url-shortener.fullname" .}}-url-service
+  template:
+    metadata:
+      labels:
+        app: {{ include "url-shortener.fullname" .}}-url-service
+    spec:
+      containers:
+      - name: url-service
+        image: "{{ .Values.urlService.image.repository}}:{{ .Values.urlService.image.tag}}"
+        ports:
+        - containerPort: {{ .Values.urlService.port}}
+        env:
+          {{- range $key, $value := .Values.urlService.env }}
+            - name: {{ $key }}
+              value: "{{ $value }}"
+          {{- end }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.urlService.port }}
+          initialDelaySeconds: {{ .Values.urlService.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.urlService.readinessProbe.periodSeconds }}
+        imagePullPolicy: {{ .Values.urlService.image.pullPolicy }}

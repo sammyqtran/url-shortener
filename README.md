@@ -46,6 +46,7 @@ url-shortener/
 - **Redis**: Acts as the message broker using Redis Streams for event delivery.
 - **PostgreSQL**: Stores URL mappings and access statistics.
 
+![diagram](./images/diagram.png)
 
 ### Data Flow:
 - HTTP REST request -> Gateway -> gRPC -> url-service
@@ -96,10 +97,15 @@ docker build -t analytics-service:latest -f ./cmd/analytics-service/Dockerfile .
 docker build -t gateway-service:latest -f ./cmd/gateway-service/Dockerfile ./cmd/gateway-service
 docker build -t url-service:latest -f ./cmd/url-service/Dockerfile ./cmd/url-service
 
-// apply manifests and port forward if needed
-kubectl apply -f deployments/
-kubectl port-forward svc/gateway-service 8080:8080
-kubectl port-forward svc/url-service 50051:50051 
+// Install helm release using local chart, render k8s manifests and apply to cluster
+helm install dev-url-shortener url-shortener/
+
+// wait for all services to ready
+// check for availability through
+kubectl get pods
+
+// you may need to port forward to test 
+kubectl port-forward svc/dev-url-shortener-gateway-service 8080:8080
 ```
 
 ## Testing

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "url-shortener.fullname" . }}-postgres
+  labels:
+    {{- include "url-shortener.labels" . | nindent 4 }}
+spec:
+  ports:
+  - port: {{ .Values.postgres.containerPort }}
+    protocol: TCP
+    targetPort: {{ .Values.postgres.containerPort }}
+  selector:
+    app:  {{ include "url-shortener.fullname" . }}-postgres
