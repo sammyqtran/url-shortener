@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/sammyqtran/url-shortener/internal/metrics"
 	"github.com/sammyqtran/url-shortener/internal/models"
 	"github.com/sammyqtran/url-shortener/internal/repository"
 	pb "github.com/sammyqtran/url-shortener/proto"
@@ -28,20 +29,23 @@ type URLService struct {
 	codeGenerator func(ctx context.Context) (string, error)
 	cache         *redis.Client
 	Logger        *zap.Logger
+	Metrics       *metrics.PrometheusMetrics
 }
 
-func NewURLService(repo repository.URLRepository, cache *redis.Client, logger *zap.Logger) *URLService {
+func NewURLService(repo repository.URLRepository, cache *redis.Client, logger *zap.Logger, metrics *metrics.PrometheusMetrics) *URLService {
 	service := &URLService{
 		repo:    repo,
 		baseURL: "http://localhost:8080/",
 		cache:   cache,
 		Logger:  logger,
+		Metrics: metrics,
 	}
 	service.codeGenerator = service.GenerateShortCode
 	return service
 }
 
 func (s *URLService) CreateShortURL(ctx context.Context, req *pb.CreateURLRequest) (*pb.CreateURLResponse, error) {
+	service := "url-service"
 
 	// url validation
 	if err := s.validateURL(req.OriginalUrl); err != nil {
@@ -68,15 +72,24 @@ func (s *URLService) CreateShortURL(ctx context.Context, req *pb.CreateURLReques
 		// ExpiresAt:   expiresAt,
 	}
 
+	// record db operation and duration
+	s.Metrics.IncDBOperation(service, "Create")
+	dbTimer := time.Now()
 	// Save to database
 	if err := s.repo.Create(ctx, urlModel); err != nil {
+		s.Metrics.IncDBError(service, "Create")
 		s.Logger.Error("Failed to create short URL", zap.Error(err))
 		return nil, status.Errorf(codes.Internal, "failed to create URL: %v", err)
 	}
+	s.Metrics.ObserveDBOperationDuration(service, "Create", time.Since(dbTimer).Seconds())
 
 	// Put in cache
 
-	s.setCacheFromModel(ctx, shortCode, urlModel)
+	err = s.setCacheFromModel(ctx, shortCode, urlModel)
+	if err != nil {
+		s.Metrics.IncCacheError(service, "map_url", "set")
+		s.Logger.Error("Failed to cache short URL", zap.Error(err))
+	}
 
 	return &pb.CreateURLResponse{
 		ShortCode: shortCode,
@@ -94,6 +107,7 @@ func (s *URLService) GetOriginalURL(ctx context.Context, req *pb.GetURLRequest) 
 	// Try cache first
 	cachedURL, err := s.getFromCache(ctx, req.ShortCode)
 	if err == nil {
+		s.Metrics.IncCacheHit("url-service", "map_url")
 		s.Logger.Info("Cache hit", zap.String("shortCode", req.ShortCode))
 		// Cache hit - check expiration
 		if cachedURL.ExpiresAt != nil && cachedURL.ExpiresAt.Before(time.Now()) {
@@ -116,8 +130,12 @@ func (s *URLService) GetOriginalURL(ctx context.Context, req *pb.GetURLRequest) 
 	s.Logger.Info("Cache miss", zap.String("shortCode", req.ShortCode))
 
 	// Fall back retrieve from repository
+	s.Metrics.IncDBOperation("url-service", "GetByShortCode")
+	dbTimer := time.Now()
 	urlModel, err := s.repo.GetByShortCode(ctx, req.ShortCode)
+	s.Metrics.ObserveDBOperationDuration("url-service", "GetByShortCode", time.Since(dbTimer).Seconds())
 	if err != nil {
+		s.Metrics.IncDBError("url-service", "GetByShortCode")
 		s.Logger.Error("Error retrieving from repository", zap.Error(err))
 		if err == repository.ErrURLNotFound {
 			return &pb.GetURLResponse{
@@ -247,9 +265,11 @@ func (s *URLService) getFromCache(ctx context.Context, shortCode string) (*model
 
 	result, err := s.cache.Get(ctx, cacheKey).Result()
 	if err == redis.Nil {
+		s.Metrics.IncCacheMiss("url-service", "map_url")
 		return nil, fmt.Errorf("cache miss")
 	}
 	if err != nil {
+		s.Metrics.IncCacheError("url-service", "map_url", "get")
 		// Log cache error but don't fail the request
 		s.Logger.Warn("Cache get error", zap.String("shortCode", shortCode), zap.Error(err))
 		return nil, fmt.Errorf("cache error")
@@ -268,6 +288,7 @@ func (s *URLService) removeFromCache(ctx context.Context, shortCode string) {
 	cacheKey := fmt.Sprintf("url:%s", shortCode)
 	err := s.cache.Del(ctx, cacheKey).Err()
 	if err != nil {
+		s.Metrics.IncCacheError("url-service", "map_url", "delete")
 		s.Logger.Error("Failed to remove from cache", zap.String("shortCode", shortCode), zap.Error(err))
 	}
 }

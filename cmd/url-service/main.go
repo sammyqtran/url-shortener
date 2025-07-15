@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -11,8 +12,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/sammyqtran/url-shortener/internal/database"
+	"github.com/sammyqtran/url-shortener/internal/metrics"
 	"github.com/sammyqtran/url-shortener/internal/repository/postgres"
 	"github.com/sammyqtran/url-shortener/internal/service"
 	pb "github.com/sammyqtran/url-shortener/proto"
@@ -68,8 +71,12 @@ func main() {
 	}
 	logger.Info("Connected to Redis successfully")
 
+	metrics := metrics.NewPrometheusMetrics()
 	// create service instance (uses default baseURL from service package)
-	urlService := service.NewURLService(urlRepo, cache, logger)
+	urlService := service.NewURLService(urlRepo, cache, logger, metrics)
+
+	//start minimal http server for metrics
+	startMetricsServer()
 
 	// create a new gRPC server
 	logger.Info("Starting gRPC server on port 50051...")
@@ -112,4 +119,9 @@ func getEnvAsInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+func startMetricsServer() {
+	http.Handle("/metrics", promhttp.Handler())
+	go http.ListenAndServe(":2112", nil)
 }
