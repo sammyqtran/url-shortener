@@ -18,7 +18,7 @@ type GatewayServer struct {
 	GrpcClient pb.URLServiceClient
 	Publisher  queue.EventPublisher
 	Logger     *zap.Logger
-	Metrics    *metrics.PrometheusMetrics
+	Metrics    metrics.Metrics
 }
 
 func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Request) {

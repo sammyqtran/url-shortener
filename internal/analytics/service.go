@@ -14,7 +14,7 @@ import (
 type AnalyticsService struct {
 	MessageQueue queue.MessageQueue
 	Logger       *zap.Logger
-	Metrics      *metrics.PrometheusMetrics
+	Metrics      metrics.Metrics
 	// Add database connection here when you want to persist analytics
 }
 

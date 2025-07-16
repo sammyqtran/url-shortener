@@ -24,9 +24,10 @@ type Metrics interface {
 	// Cache operations (URL service)
 	IncCacheHit(service, cacheName string)
 	IncCacheMiss(service, cacheName string)
-	IncCacheError(service, cacheName string)
+	IncCacheError(service, cacheName, operation string)
 
 	// DB operations (URL service)
 	IncDBOperation(service, operation string)
 	IncDBError(service, operation string)
+	ObserveDBOperationDuration(service, operation string, seconds float64)
 }

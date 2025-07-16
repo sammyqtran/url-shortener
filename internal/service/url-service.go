@@ -29,7 +29,7 @@ type URLService struct {
 	codeGenerator func(ctx context.Context) (string, error)
 	cache         *redis.Client
 	Logger        *zap.Logger
-	Metrics       *metrics.PrometheusMetrics
+	Metrics       metrics.Metrics
 }
 
 func NewURLService(repo repository.URLRepository, cache *redis.Client, logger *zap.Logger, metrics *metrics.PrometheusMetrics) *URLService {

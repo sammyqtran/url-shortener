@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sammyqtran/url-shortener/internal/metrics"
 	pb "github.com/sammyqtran/url-shortener/proto"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
@@ -90,8 +91,10 @@ func (m *MockURLServiceClient) HealthCheck(ctx context.Context,
 func TestHandlleHealthCheck(t *testing.T) {
 
 	mockClient := new(MockURLServiceClient)
+	mockMetrics := &metrics.NoopMetrics{}
 	server := &GatewayServer{
 		GrpcClient: mockClient,
+		Metrics:    mockMetrics,
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -133,7 +136,7 @@ func TestHandleGetOriginalURL(t *testing.T) {
 			name:           "Missing Short code/ Invalid URL",
 			shortCode:      "",
 			expectGrpcCall: false,
-			expectedCode:   http.StatusNotFound,
+			expectedCode:   http.StatusBadRequest,
 		},
 		{
 			name:           "Failed gRPC call",
@@ -159,11 +162,12 @@ func TestHandleGetOriginalURL(t *testing.T) {
 	for _, tc := range tests {
 
 		t.Run(tc.name, func(t *testing.T) {
-
+			mockMetrics := &metrics.NoopMetrics{}
 			mockClient := new(MockURLServiceClient)
 			server := &GatewayServer{
 				GrpcClient: mockClient,
 				Logger:     zap.NewNop(),
+				Metrics:    mockMetrics,
 			}
 
 			if tc.expectGrpcCall {
@@ -241,10 +245,12 @@ func TestHandleCreateShortURL(t *testing.T) {
 	for _, tc := range testCases {
 
 		t.Run(tc.name, func(t *testing.T) {
+			mockMetrics := &metrics.NoopMetrics{}
 			mockClient := new(MockURLServiceClient)
 			server := &GatewayServer{
 				GrpcClient: mockClient,
 				Logger:     zap.NewNop(),
+				Metrics:    mockMetrics,
 			}
 			if tc.expectGrpcCall {
 				mockClient.
@@ -275,10 +281,12 @@ func TestPublishCreate(t *testing.T) {
 
 	mockClient := new(MockURLServiceClient)
 	mockPublisher := new(MockPublisher)
+	mockMetrics := &metrics.NoopMetrics{}
 	service := &GatewayServer{
 		GrpcClient: mockClient,
 		Publisher:  mockPublisher,
 		Logger:     zap.NewNop(),
+		Metrics:    mockMetrics,
 	}
 
 	mockClient.
@@ -308,12 +316,14 @@ func TestPublishCreate(t *testing.T) {
 }
 
 func TestPublishAccess(t *testing.T) {
+	mockMetrics := &metrics.NoopMetrics{}
 	mockClient := new(MockURLServiceClient)
 	mockPublisher := new(MockPublisher)
 	service := &GatewayServer{
 		GrpcClient: mockClient,
 		Publisher:  mockPublisher,
 		Logger:     zap.NewNop(),
+		Metrics:    mockMetrics,
 	}
 
 	mockClient.
