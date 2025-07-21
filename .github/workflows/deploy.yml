@@ -5,6 +5,8 @@ on:
     workflows: ["Go CI with Build, Test, and Docker Push"]
     types:
       - completed
+    branches:
+      - feature/prometheus
 
 jobs:
   deploy:
