@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sammyqtran/url-shortener/internal/events"
+	"github.com/sammyqtran/url-shortener/internal/metrics"
 	"github.com/sammyqtran/url-shortener/internal/queue"
 	"go.uber.org/zap"
 )
@@ -44,9 +45,11 @@ func (m *MockMessageQueue) Close() error {
 
 func TestHandleURLCreated(t *testing.T) {
 	mockQueue := new(MockMessageQueue)
+	mockMetrics := &metrics.NoopMetrics{}
 	service := &AnalyticsService{
 		MessageQueue: mockQueue,
 		Logger:       zap.NewNop(),
+		Metrics:      mockMetrics,
 	}
 	event := events.URLCreatedEventData{
 		BaseEvent: events.BaseEvent{
@@ -83,10 +86,12 @@ func TestHandleURLCreated(t *testing.T) {
 }
 
 func TestHandleURLAccessed(t *testing.T) {
+	mockMetrics := &metrics.NoopMetrics{}
 	mockQueue := new(MockMessageQueue)
 	service := &AnalyticsService{
 		MessageQueue: mockQueue,
 		Logger:       zap.NewNop(),
+		Metrics:      mockMetrics,
 	}
 	event := events.URLAccessedEventData{
 		BaseEvent: events.BaseEvent{
@@ -124,10 +129,12 @@ func TestHandleURLAccessed(t *testing.T) {
 }
 
 func TestHandleEvent(t *testing.T) {
+	mockMetrics := &metrics.NoopMetrics{}
 	mockQueue := new(MockMessageQueue)
 	service := &AnalyticsService{
 		MessageQueue: mockQueue,
 		Logger:       zap.NewNop(),
+		Metrics:      mockMetrics,
 	}
 	event := events.URLCreatedEventData{
 		BaseEvent: events.BaseEvent{
@@ -180,10 +187,12 @@ func TestHandleEvent(t *testing.T) {
 }
 
 func TestStart(t *testing.T) {
+	mockMetrics := &metrics.NoopMetrics{}
 	mockQueue := new(MockMessageQueue)
 	service := &AnalyticsService{
 		MessageQueue: mockQueue,
 		Logger:       zap.NewNop(),
+		Metrics:      mockMetrics,
 	}
 
 	err := service.Start(context.Background())

@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/sammyqtran/url-shortener/internal/analytics"
+	"github.com/sammyqtran/url-shortener/internal/metrics"
 	"github.com/sammyqtran/url-shortener/internal/queue"
 	"go.uber.org/zap"
 )
@@ -33,8 +36,8 @@ func main() {
 	})
 
 	// Test Redis connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx, pingcancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer pingcancel()
 	_, err := redisClient.Ping(ctx).Result()
 	if err != nil {
 		logger.Fatal("Failed to connect to Redis", zap.Error(err))
@@ -45,11 +48,16 @@ func main() {
 	streamConfig := queue.DefaultStreamConfig()
 	messageQueue := queue.NewRedisStreamsQueue(redisClient, streamConfig, logger)
 
+	// create metrics collector
+	metrics := metrics.NewPrometheusMetrics()
 	// Create analytics service
-	analyticsService := analytics.NewAnalyticsService(messageQueue, logger)
+	analyticsService := analytics.NewAnalyticsService(messageQueue, logger, metrics)
+
+	//start minimal http server for metrics
+	startMetricsServer()
 
 	// Create context for graceful shutdown
-	ctx, cancel = context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Start analytics service in a goroutine
@@ -85,4 +93,9 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func startMetricsServer() {
+	http.Handle("/metrics", promhttp.Handler())
+	go http.ListenAndServe(":2112", nil)
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redismock/v9"
+	"github.com/sammyqtran/url-shortener/internal/metrics"
 	"github.com/sammyqtran/url-shortener/internal/models"
 	"github.com/sammyqtran/url-shortener/internal/repository"
 	pb "github.com/sammyqtran/url-shortener/proto"
@@ -101,11 +102,13 @@ func TestGenerateShortCode(t *testing.T) {
 }
 
 func TestGenerateShortCode_FailedGeneration(t *testing.T) {
+	mockMetrics := &metrics.NoopMetrics{}
 	mockRepo := new(MockRepo)
 	service := &URLService{
 		repo:    mockRepo,
 		baseURL: "https://localhost:8080",
 		Logger:  zap.NewNop(),
+		Metrics: mockMetrics,
 	}
 
 	mockRepo.On("IsShortCodeExists", mock.Anything, mock.AnythingOfType("string")).Return(true, nil)
@@ -173,11 +176,13 @@ func TestValidateURL(t *testing.T) {
 	for _, tc := range tests {
 
 		t.Run(tc.name, func(t *testing.T) {
+			mockMetrics := &metrics.NoopMetrics{}
 			mockRepo := new(MockRepo)
 			service := &URLService{
 				repo:    mockRepo,
 				baseURL: "https://localhost:8080",
 				Logger:  zap.NewNop(),
+				Metrics: mockMetrics,
 			}
 			err := service.validateURL(tc.url)
 
@@ -193,12 +198,13 @@ func TestValidateURL(t *testing.T) {
 }
 
 func TestHealthCheck(t *testing.T) {
-
+	mockMetrics := &metrics.NoopMetrics{}
 	repo := new(MockRepo)
 	service := &URLService{
 		repo:    repo,
 		baseURL: "https://localhost:8080",
 		Logger:  zap.NewNop(),
+		Metrics: mockMetrics,
 	}
 
 	healthRequest := &pb.HealthRequest{}
@@ -350,11 +356,13 @@ func TestGetOriginalURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, mockClient := redismock.NewClientMock()
 			repo := new(MockRepo)
+			mockMetrics := &metrics.NoopMetrics{}
 			service := &URLService{
 				repo:    repo,
 				baseURL: "https://localhost:8080",
 				cache:   db,
 				Logger:  zap.NewNop(),
+				Metrics: mockMetrics,
 			}
 
 			if tt.mockReturn != nil || tt.mockError != nil {
@@ -486,13 +494,14 @@ func TestCreateShortURL(t *testing.T) {
 
 			cache, mockRedis := redismock.NewClientMock()
 			tt.mockSetup(repo, mockRedis)
-
+			mockMetrics := &metrics.NoopMetrics{}
 			service := &URLService{
 				repo:          repo,
 				baseURL:       "https://localhost:8080/",
 				codeGenerator: tt.codeGenerator,
 				cache:         cache,
 				Logger:        zap.NewNop(),
+				Metrics:       mockMetrics,
 			}
 
 			resp, err := service.CreateShortURL(context.Background(), tt.request)
@@ -513,11 +522,13 @@ func TestGetFromCache_CacheHit(t *testing.T) {
 	// create redis mock client and mock controller
 	db, mock := redismock.NewClientMock()
 	repo := new(MockRepo)
+	mockMetrics := &metrics.NoopMetrics{}
 	service := &URLService{
 		repo:    repo,
 		cache:   db,
 		baseURL: "https://localhost:8080",
 		Logger:  zap.NewNop(),
+		Metrics: mockMetrics,
 	}
 
 	urlModel := &models.URL{
@@ -541,10 +552,12 @@ func TestGetFromCache_CacheHit(t *testing.T) {
 
 func TestGetFromCache_CacheMiss(t *testing.T) {
 	db, mock := redismock.NewClientMock()
+	mockMetrics := &metrics.NoopMetrics{}
 	service := &URLService{
-		repo:   new(MockRepo),
-		cache:  db,
-		Logger: zap.NewNop(),
+		repo:    new(MockRepo),
+		cache:   db,
+		Logger:  zap.NewNop(),
+		Metrics: mockMetrics,
 	}
 
 	mock.ExpectGet("url:abc123").RedisNil()
@@ -558,10 +571,12 @@ func TestGetFromCache_CacheMiss(t *testing.T) {
 
 func TestGetFromCache_CachErr(t *testing.T) {
 	db, mock := redismock.NewClientMock()
+	mockMetrics := &metrics.NoopMetrics{}
 	service := &URLService{
-		repo:   new(MockRepo),
-		cache:  db,
-		Logger: zap.NewNop(),
+		repo:    new(MockRepo),
+		cache:   db,
+		Logger:  zap.NewNop(),
+		Metrics: mockMetrics,
 	}
 
 	mock.ExpectGet("url:abc123").SetErr(fmt.Errorf("redis error"))
@@ -574,10 +589,12 @@ func TestGetFromCache_CachErr(t *testing.T) {
 
 func TestSetCacheFromModel(t *testing.T) {
 	db, mock := redismock.NewClientMock()
+	mockMetrics := &metrics.NoopMetrics{}
 	service := &URLService{
-		repo:   new(MockRepo),
-		cache:  db,
-		Logger: zap.NewNop(),
+		repo:    new(MockRepo),
+		cache:   db,
+		Logger:  zap.NewNop(),
+		Metrics: mockMetrics,
 	}
 
 	urlModel := &models.URL{

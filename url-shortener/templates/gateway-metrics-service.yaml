@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "url-shortener.fullname" . }}-gateway-metrics
+  labels:
+    {{- include "url-shortener.labels" . | nindent 4}}
+spec:
+  selector:
+    app: {{ include "url-shortener.fullname" . }}-gateway-service
+  ports:
+  - name: metrics
+    port: {{ .Values.metrics.port}}
+    targetPort: {{ .Values.metrics.targetPort}}
+  type: ClusterIP

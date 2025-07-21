@@ -1,16 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{include "url-shortener.fullname" .}}-url-service
+  name: {{ include "url-shortener.fullname" . }}-analytics-service
   labels:
     {{- include "url-shortener.labels" . | nindent 4}}
 spec:
   selector:
-    app: {{include "url-shortener.fullname" . }}-url-service
+    app: {{ include "url-shortener.fullname" . }}-analytics-service
   ports:
-  - name: url-service
-    port: {{ .Values.urlService.port}}
-    targetPort: {{ .Values.urlService.port}}
   - name: metrics
     port: {{ .Values.metrics.port }}
     targetPort: {{ .Values.metrics.targetPort }}

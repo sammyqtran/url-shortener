@@ -93,9 +93,9 @@ minikube start
 
 // build images
 eval $(minikube docker-env)
-docker build -t analytics-service:latest -f ./cmd/analytics-service/Dockerfile ./cmd/analytics-service
-docker build -t gateway-service:latest -f ./cmd/gateway-service/Dockerfile ./cmd/gateway-service
-docker build -t url-service:latest -f ./cmd/url-service/Dockerfile ./cmd/url-service
+docker build -t analytics-service:latest -f ./cmd/analytics-service/Dockerfile .
+docker build -t gateway-service:latest -f ./cmd/gateway-service/Dockerfile .
+docker build -t url-service:latest -f ./cmd/url-service/Dockerfile .
 
 // Install helm release using local chart, render k8s manifests and apply to cluster
 helm install dev-url-shortener url-shortener/

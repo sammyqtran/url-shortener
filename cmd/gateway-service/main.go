@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/sammyqtran/url-shortener/internal/gateway"
+	"github.com/sammyqtran/url-shortener/internal/metrics"
 	"github.com/sammyqtran/url-shortener/internal/queue"
 	pb "github.com/sammyqtran/url-shortener/proto"
 	"go.uber.org/zap"
@@ -29,7 +31,7 @@ func main() {
 	target := getEnv("URL_SERVICE_HOST", "url-service")
 	conn, err := grpc.NewClient(target+":50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		logger.Fatal("Error connecting to Redis", zap.Error(err))
+		logger.Fatal("Error connecting to URL Service via gRPC.", zap.Error(err))
 	}
 	defer conn.Close()
 
@@ -57,11 +59,24 @@ func main() {
 
 	grpcClient := pb.NewURLServiceClient(conn)
 
+	// create prometheus object and add to struct
+
+	metrics := metrics.NewPrometheusMetrics()
+	// TODO Add metrics collector here
 	server := &gateway.GatewayServer{
 		GrpcClient: grpcClient,
 		Publisher:  publisher,
 		Logger:     logger,
+		Metrics:    metrics,
 	}
+
+	//go routine to serve metrics on 2112
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		if err := http.ListenAndServe(":2112", nil); err != nil {
+			logger.Fatal("Metrics server failed", zap.Error(err))
+		}
+	}()
 
 	r := mux.NewRouter()
 

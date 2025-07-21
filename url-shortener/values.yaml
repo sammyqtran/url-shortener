@@ -163,6 +163,11 @@ urlService:
     REDIS_ADDR: dev-url-shortener-redis:6379 
     REDIS_PASSWORD: "" 
 
+metrics:
+  port: 2112
+  targetPort: 2112
+  nodePort: 30495
+
 redis:
   address: dev-url-shortener-redis:6379
   password: ""
