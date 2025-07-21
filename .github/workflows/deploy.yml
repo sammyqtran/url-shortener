@@ -1,0 +1,42 @@
+name: Deploy to Local Kubernetes
+
+on:
+  workflow_run:
+    workflows: ["Go CI with Build, Test, and Docker Push"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, k8s]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Pull latest images
+        run: |
+          docker pull ghcr.io/sammyqtran/url-service:latest
+          docker pull ghcr.io/sammyqtran/gateway-service:latest
+          docker pull ghcr.io/sammyqtran/analytics-service:latest
+
+      - name: Rollout deployments
+        run: |
+          kubectl rollout restart deployment/url-service
+          kubectl rollout restart deployment/gateway-service
+          kubectl rollout restart deployment/analytics-service
+
+      - name: Wait for deployments to be ready
+        run: |
+          kubectl rollout status deployment/url-service --timeout=120s
+          kubectl rollout status deployment/gateway-service --timeout=120s
+          kubectl rollout status deployment/analytics-service --timeout=120s
+
+
+
