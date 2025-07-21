@@ -19,6 +19,9 @@ spec:
         image: "{{.Values.gatewayService.image.repository}}:{{ .Values.gatewayService.image.tag }}"
         ports:
         - containerPort: {{ .Values.gatewayService.port }}
+          name: http
+        - containerPort: {{ .Values.metrics.port}}
+          name: metrics
         readinessProbe:
           tcpSocket:
             port: {{ .Values.gatewayService.port }}

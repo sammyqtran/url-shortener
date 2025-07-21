@@ -166,6 +166,7 @@ urlService:
 metrics:
   port: 2112
   targetPort: 2112
+  nodePort: 30495
 
 redis:
   address: dev-url-shortener-redis:6379

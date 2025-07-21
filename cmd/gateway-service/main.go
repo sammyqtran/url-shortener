@@ -70,11 +70,18 @@ func main() {
 		Metrics:    metrics,
 	}
 
+	//go routine to serve metrics on 2112
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		if err := http.ListenAndServe(":2112", nil); err != nil {
+			logger.Fatal("Metrics server failed", zap.Error(err))
+		}
+	}()
+
 	r := mux.NewRouter()
 
 	r.HandleFunc("/create", server.HandleCreateShortURL).Methods("POST")
 	r.HandleFunc("/healthz", server.HandleHealthCheck).Methods("GET")
-	r.Handle("/metrics", promhttp.Handler()).Methods("GET")
 	r.HandleFunc("/{shortCode}", server.HandleGetOriginalURL).Methods("GET")
 
 	logger.Info("Gateway service listening on :8080")

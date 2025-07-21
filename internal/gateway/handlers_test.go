@@ -19,6 +19,7 @@ import (
 // mock event publisher
 
 type MockPublisher struct {
+	mock.Mock
 	Called             bool
 	PublishedShortCode string
 	PublishedURL       string
@@ -49,7 +50,6 @@ func (m *MockPublisher) PublishURLAccessed(ctx context.Context, shortCode, origi
 
 // mock grpc client
 type MockURLServiceClient struct {
-	pb.URLServiceClient
 	mock.Mock
 }
 

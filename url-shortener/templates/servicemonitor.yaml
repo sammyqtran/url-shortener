@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "url-shortener.fullname" . }}-url-service
+  labels:
+    release: prometheus  # must match the release name of kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+{{ include "url-shortener.labels" . | indent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s

@@ -8,7 +8,8 @@ spec:
   selector:
     app: {{include "url-shortener.fullname" . }}-url-service
   ports:
-  - port: {{ .Values.urlService.port}}
+  - name: url-service
+    port: {{ .Values.urlService.port}}
     targetPort: {{ .Values.urlService.port}}
   - name: metrics
     port: {{ .Values.metrics.port }}

@@ -1,4 +1,4 @@
-name: Go CI with Docker Compose and Test Client
+name: Go CI with Build, Test, and Docker Push
 
 on:
   push:
@@ -23,36 +23,16 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Build and start services via docker-compose
-        run: |
-          docker compose up -d --build
-          
-          # Wait for postgres health
-          for i in {1..30}; do
-            status=$(docker inspect --format='{{json .State.Health.Status}}' url-shortener-postgres || echo "null")
-            if [[ "$status" == "\"healthy\"" ]]; then
-              echo "Postgres is healthy"
-              break
-            fi
-            echo "Waiting for Postgres to be healthy..."
-            sleep 2
-          done
+      - name: Verify compilation and run tests
+        run: make ci
 
-      - name: Run url-service tests
-        working-directory: ./cmd/url-service
-        run: go test -v ./...
+      - name: Connect to Github Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run gateway-service tests
-        working-directory: ./cmd/gateway-service
-        run: go test -v ./...
-
-      - name: Run test client to verify grpc service
-        working-directory: ./cmd/test-client/url-service-test-client
-        run: go run main.go
-
-      - name: Run test client to verify handlers service
-        working-directory: ./cmd/test-client/gateway-service-test-client
-        run: go run main.go        
-
-      - name: Tear down docker-compose
-        run: docker compose down
+      - name: Build Docker images and push to registry
+        run: make docker-ci
+      
