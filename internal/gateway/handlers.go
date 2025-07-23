@@ -83,8 +83,7 @@ func (s *GatewayServer) HandleCreateShortURL(w http.ResponseWriter, r *http.Requ
 	if s.Publisher != nil {
 		go func() {
 			s.Metrics.IncPublishEvent("gateway", string(events.URLCreatedEvent))
-			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-			defer cancel()
+			ctx := context.Background()
 			eventPublishTimer := time.Now()
 			err := s.Publisher.PublishURLCreated(ctx, response.ShortCode, req.URL, s.getClientInfo(r))
 			s.Metrics.ObservePublishEventLatency("gateway", string(events.URLCreatedEvent), time.Since(eventPublishTimer).Seconds())

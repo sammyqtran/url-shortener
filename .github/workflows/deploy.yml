@@ -5,8 +5,6 @@ on:
     workflows: ["Go CI with Build, Test, and Docker Push"]
     types:
       - completed
-    branches:
-      - main
 
 jobs:
   deploy:
@@ -30,15 +28,31 @@ jobs:
 
       - name: Rollout deployments
         run: |
-          kubectl rollout restart deployment/url-service
-          kubectl rollout restart deployment/gateway-service
-          kubectl rollout restart deployment/analytics-service
+          kubectl rollout restart deployment/dev-url-shortener-url-service -n default
+          kubectl rollout restart deployment/dev-url-shortener-gateway-service -n default
+          kubectl rollout restart deployment/dev-url-shortener-analytics-service -n default
 
       - name: Wait for deployments to be ready
         run: |
-          kubectl rollout status deployment/url-service --timeout=120s
-          kubectl rollout status deployment/gateway-service --timeout=120s
-          kubectl rollout status deployment/analytics-service --timeout=120s
+          kubectl rollout status deployment/dev-url-shortener-url-service -n default --timeout=120s
+          kubectl rollout status deployment/dev-url-shortener-gateway-service -n default --timeout=120s
+          kubectl rollout status deployment/dev-url-shortener-analytics-service -n default --timeout=120s
+      
+      - name: Run Integration test
+        run: |
+          kubectl port-forward svc/dev-url-shortener-gateway-service 8080:8080 &
+          GATEWAY_PID=$!
+          sleep 3
 
+          kubectl port-forward svc/dev-url-shortener-url-service 50051:50051 &
+          URL_PID=$!
 
-
+          sleep 5 
+          cd /home/sammy/dev/hello-go/
+          ./testingscripts/run-test-clients.sh
+          
+          for PID in $GATEWAY_PID $URL_PID; do
+            if ps -p $PID -o cmd= | grep -q 'kubectl port-forward'; then
+              kill $PID
+            fi
+          done
