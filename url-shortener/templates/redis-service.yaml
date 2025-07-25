@@ -10,4 +10,4 @@ spec:
     protocol: TCP
     targetPort: {{ .Values.redis.port }}
   selector:
-    app: {{ include "url-shortener.fullname" .}}-redis
+    {{- include "url-shortener.redisLabels" . | nindent 4}}

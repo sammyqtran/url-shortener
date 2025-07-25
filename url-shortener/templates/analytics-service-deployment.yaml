@@ -5,14 +5,14 @@ metadata:
   labels:
     {{- include "url-shortener.labels" . | nindent 4}}
 spec:
-  replicas: {{.Values.analyticsService.replicaCount}}
+  replicas: {{  .Values.analyticsService.replicaCount  }}
   selector:
     matchLabels:
-      app: {{ include "url-shortener.fullname" . }}-analytics-service
+      {{- include "url-shortener.analyticsLabels" . | nindent 6}}
   template:
     metadata:
       labels:
-        app: {{ include "url-shortener.fullname" . }}-analytics-service
+        {{- include "url-shortener.analyticsLabels" . | nindent 8}}
     spec:
       containers:
       - name: analytics-service

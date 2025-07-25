@@ -10,4 +10,4 @@ spec:
     protocol: TCP
     targetPort: {{ .Values.postgres.containerPort }}
   selector:
-    app:  {{ include "url-shortener.fullname" . }}-postgres
+    {{- include "url-shortener.postgresLabels" . | nindent 4}}

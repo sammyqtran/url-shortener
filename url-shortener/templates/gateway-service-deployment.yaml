@@ -8,11 +8,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "url-shortener.fullname" . }}-gateway-service
+      {{- include "url-shortener.gatewayLabels" . | nindent 6}}
   template:
     metadata:
       labels:
-        app: {{ include "url-shortener.fullname" . }}-gateway-service
+        {{- include "url-shortener.gatewayLabels" . | nindent 8}}
     spec:
       containers:
       - name: gateway-service

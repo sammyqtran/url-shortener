@@ -19,18 +19,26 @@ jobs:
         uses: azure/setup-kubectl@v3
         with:
           version: 'latest'
-
-      - name: Pull latest images
+      
+      - name: Helm Upgrade
+        env:
+            GIT_SHA: ${{ github.sha}}
         run: |
-          docker pull ghcr.io/sammyqtran/url-service:latest
-          docker pull ghcr.io/sammyqtran/gateway-service:latest
-          docker pull ghcr.io/sammyqtran/analytics-service:latest
+          helm upgrade --install dev-url-shortener ./url-shortener/url-shortener  --namespace staging --set image.tag=${GIT_SHA::7}
 
-      - name: Rollout deployments
-        run: |
-          kubectl rollout restart deployment/dev-url-shortener-url-service -n default
-          kubectl rollout restart deployment/dev-url-shortener-gateway-service -n default
-          kubectl rollout restart deployment/dev-url-shortener-analytics-service -n default
+      # - name: Pull latest images
+      #   env:
+      #     GIT_SHA: ${{ github.sha }}
+      #   run: |
+      #     docker pull ghcr.io/sammyqtran/url-service:${GIT_SHA::7}
+      #     docker pull ghcr.io/sammyqtran/gateway-service:${GIT_SHA::7}
+      #     docker pull ghcr.io/sammyqtran/analytics-service:${GIT_SHA::7}
+
+      # - name: Rollout deployments
+      #   run: |
+      #     kubectl rollout restart deployment/dev-url-shortener-url-service -n default
+      #     kubectl rollout restart deployment/dev-url-shortener-gateway-service -n default
+      #     kubectl rollout restart deployment/dev-url-shortener-analytics-service -n default
 
       - name: Wait for deployments to be ready
         run: |
@@ -56,3 +64,7 @@ jobs:
               kill $PID
             fi
           done
+      
+      - name: Upgrade to Production
+        run: |
+          helm upgrade dev-url-shortener ./

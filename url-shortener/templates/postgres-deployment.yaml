@@ -8,11 +8,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "url-shortener.fullname" . }}-postgres
+      {{- include "url-shortener.postgresLabels" . | nindent 6}}
   template:
     metadata:
       labels:
-        app: {{ include "url-shortener.fullname" . }}-postgres
+        {{- include "url-shortener.postgresLabels" . | nindent 8}}
     spec:
       containers:
       - name: postgres

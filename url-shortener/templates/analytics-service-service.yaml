@@ -6,7 +6,7 @@ metadata:
     {{- include "url-shortener.labels" . | nindent 4}}
 spec:
   selector:
-    app: {{ include "url-shortener.fullname" . }}-analytics-service
+    {{- include "url-shortener.analyticsLabels" . | nindent 4}}
   ports:
   - name: metrics
     port: {{ .Values.metrics.port }}
