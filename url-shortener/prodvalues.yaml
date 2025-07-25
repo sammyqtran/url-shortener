@@ -1,14 +1,14 @@
 analyticsService:
   replicaCount: 1
   image:
-    repository: analytics-service
+    repository: ghcr.io/sammyqtran/analytics-service
     tag: latest
     pullPolicy: IfNotPresent
 
 gatewayService:
   replicaCount: 1
   image:
-    repository: gateway-service
+    repository: ghcr.io/sammyqtran/gateway-service
     tag: latest
     imagePullPolicy: IfNotPresent
   port: 8080
@@ -22,7 +22,7 @@ gatewayService:
 urlService:
   replicaCount: 1
   image:
-    repository: url-service
+    repository: ghcr.io/sammyqtran/url-service
     tag: latest
     pullPolicy: IfNotPresent
   port: 50051
