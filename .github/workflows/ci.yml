@@ -34,5 +34,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Docker images and push to registry
+        if: github.ref == 'refs/heads/main'
         run: make docker-ci
       
