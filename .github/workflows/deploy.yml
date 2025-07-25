@@ -19,18 +19,18 @@ jobs:
         uses: azure/setup-kubectl@v3
         with:
           version: 'latest'
-
-      - name: Pull latest images
+      
+      - name: Deploying to Staging Environment
+        env:
+            FULL_SHA: ${{ github.sha }}
         run: |
-          docker pull ghcr.io/sammyqtran/url-service:latest
-          docker pull ghcr.io/sammyqtran/gateway-service:latest
-          docker pull ghcr.io/sammyqtran/analytics-service:latest
-
-      - name: Rollout deployments
-        run: |
-          kubectl rollout restart deployment/dev-url-shortener-url-service -n default
-          kubectl rollout restart deployment/dev-url-shortener-gateway-service -n default
-          kubectl rollout restart deployment/dev-url-shortener-analytics-service -n default
+            GIT_SHA=${FULL_SHA::7}      
+            helm upgrade --install dev-url-shortener ./url-shortener \
+            --namespace default \
+            --values ./url-shortener/values.yaml \
+            --set urlService.image.tag=$GIT_SHA \
+            --set gatewayService.image.tag=$GIT_SHA \
+            --set analyticsService.image.tag=$GIT_SHA
 
       - name: Wait for deployments to be ready
         run: |
@@ -56,3 +56,15 @@ jobs:
               kill $PID
             fi
           done
+      
+      - name: Upgrade to Production
+        env:
+          FULL_SHA: ${{ github.sha }}
+        run: |
+            GIT_SHA=${FULL_SHA::7} 
+            helm upgrade --install prod-url-shortener ./url-shortener \
+            --namespace production \
+            --values ./url-shortener/prodvalues.yaml \
+            --set urlService.image.tag=$GIT_SHA \
+            --set gatewayService.image.tag=$GIT_SHA \
+            --set analyticsService.image.tag=$GIT_SHA

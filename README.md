@@ -14,6 +14,8 @@ url-shortener/
 │   ├── url-service/             # Core URL logic and persistence
 │   ├── analytics-service/       # Asynchronous event consumer
 │   └── test-client/             # Manual and integration test clients
+├── dashboards/
+│   └── url-shortener-dashboard.json # Dashboard for Grafana
 ├── proto/                       # gRPC protobufs
 ├── internal/                    # Core application code
 │   ├── analytics/               # Analytics logic and tests
@@ -24,8 +26,8 @@ url-shortener/
 │   ├── queue/                   # Queue interface and Redis streams
 │   ├── repository/              # Data repositories (including Postgres)
 │   └── service/                 # URL Service logic and tests
-├── deployments/                 # Kubernetes manifests
-├── .github/workflows/           # GitHub Actions CI config
+├── url-shortener/               # Helm Charts
+├── .github/workflows/           # GitHub Actions CI/CD config
 ├── docker-compose.yml           # Local container orchestration
 └── README.md                    # Project overview
 ```
@@ -84,30 +86,73 @@ docker compose up -d --build
 
 [kubectl](https://kubernetes.io/docs/tasks/tools/)
 
+[Helm](https://helm.sh/docs/intro/install/)
+
 #### Run Services
 
 The following commands will run all of the services and open the port to your local machine for testing.
 You will need to port forward url-service to directly test gRPC endpoints. (Done in test clients)
+
+Local helm charts are found under ./url-shortener
 ```
 minikube start
 
-// build images
+# build images
 eval $(minikube docker-env)
 docker build -t analytics-service:latest -f ./cmd/analytics-service/Dockerfile .
 docker build -t gateway-service:latest -f ./cmd/gateway-service/Dockerfile .
 docker build -t url-service:latest -f ./cmd/url-service/Dockerfile .
 
-// Install helm release using local chart, render k8s manifests and apply to cluster
+# Install helm release using local chart, render k8s manifests and apply to cluster
 helm install dev-url-shortener url-shortener/
 
-// wait for all services to ready
-// check for availability through
+# wait for all services to ready
+# check for availability through
 kubectl get pods
 
-// you may need to port forward to test 
+# you may need to port forward to test 
 kubectl port-forward svc/dev-url-shortener-gateway-service 8080:8080
 ```
 
+### Observability: Prometheus and Grafana
+
+This project currently exposes the /metrics endpoints to all services on port 2112. 
+There is a service monitor setup to find all matching services and endpoints.
+
+#### Prerequisites:
+
+To run the observability stack, Prometheus and Grafana will need to be installed. This is most easily done through Helm using the kube-prometheus-stack. Ensure your kubernetes is online.
+
+Instructions can be found here.
+[kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack)
+
+#### Open dashboards:
+
+There is a preconfigured dashboard that can be found under /dashboards/url-shortener-dashboard.json
+
+These commands will download and install the prometheus stack for minikube through helm. It also forwards the port so the dashboard is accessible from your local machine. From there your kubernetes cluster will have the whole stack available including prometheus UI and grafana dashboards.
+```
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install prometheus prometheus-community/kube-prometheus-stack
+kubectl port-forward svc/prometheus-grafana 3000:80
+```
+
+From here you can open up the dashboard at localhost:3000.
+
+Default credentials for Grafana
+Username: admin
+Password: prom-operator
+
+
+
+### Clean Up
+
+```
+# To remove helm releases:
+helm uninstall dev-url-shortener
+helm uninstall prometheus
+```
 ## Testing
 
 ### Integration Test Clients
@@ -136,7 +181,14 @@ To see an HTML report
 go tool cover -html=coverage.out -o coverage.html
 `
 
+### Load Testing
 
+This will generate synthetic traffic via HTTP to your running gateway endpoint (default: localhost:8080).
+Ensure the service is running and port-forwarded before executing.
+
+```
+k6 run --vus [**number of virtual users**] --duration [**time**] testingscripts/loadtest.js
+```
 
 ## Endpoints:
 
@@ -169,12 +221,20 @@ grpcurl -plaintext -d '{"original_url":"https://example.com","user_id":"user123"
 
 - Kubernetes deployment manifests
 
-### In Progress
+- Structured logging
+
 - Prometheus metrics exposure
 
-- Service resource tuning for K8s
+- Observability dashboards (Grafana)
 
-- Observability dashboards
+- K6 Load testing
+
+### In Progress
+
+- Blog Post 
+
+- Fix CD to have staging name space for integration testing before deployment to default
+
 
 ## Appendix
 | Method | Path           | Description              |

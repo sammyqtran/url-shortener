@@ -6,7 +6,8 @@ metadata:
     {{- include "url-shortener.labels" . | nindent 4}}
 spec:
   selector:
-    app: {{include "url-shortener.fullname" . }}-url-service
+    {{- include "url-shortener.urlLabels" . | nindent 4}}
+    # app: {{include "url-shortener.fullname" . }}-url-service
   ports:
   - name: url-service
     port: {{ .Values.urlService.port}}

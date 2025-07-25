@@ -8,11 +8,11 @@ spec:
   replicas: {{ .Values.urlService.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "url-shortener.fullname" .}}-url-service
+      {{- include "url-shortener.urlLabels" . | nindent 8}}
   template:
     metadata:
       labels:
-        app: {{ include "url-shortener.fullname" .}}-url-service
+        {{- include "url-shortener.urlLabels" . | nindent 10}}
     spec:
       containers:
       - name: url-service

@@ -50,6 +50,37 @@ app.kubernetes.io/name: {{ include "url-shortener.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{- define "url-shortener.gatewayLabels" -}}
+app.kubernetes.io/name: {{ include "url-shortener.fullname" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: gateway-service
+{{- end }}
+
+{{- define "url-shortener.urlLabels" -}}
+app.kubernetes.io/name: {{ include "url-shortener.fullname" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: url-service
+{{- end }}
+
+{{- define "url-shortener.analyticsLabels" -}}
+app.kubernetes.io/name: {{ include "url-shortener.fullname" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: analytics-service
+{{- end }}
+
+{{- define "url-shortener.redisLabels" -}}
+app.kubernetes.io/name: {{ include "url-shortener.fullname" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: redis
+{{- end }}
+
+{{- define "url-shortener.postgresLabels" -}}
+app.kubernetes.io/name: {{ include "url-shortener.fullname" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: postgres
+{{- end }}
+
+
 {{/*
 Create the name of the service account to use
 */}}

@@ -8,11 +8,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "url-shortener.fullname" .}}-redis
+      {{- include "url-shortener.redisLabels" . | nindent 6}}
   template:
     metadata:
       labels:
-        app: {{ include "url-shortener.fullname" .}}-redis
+        {{- include "url-shortener.redisLabels" . | nindent 8}}
     spec:
       containers:
       - name: redis
