@@ -20,25 +20,17 @@ jobs:
         with:
           version: 'latest'
       
-      - name: Helm Upgrade
+      - name: Deploying to Staging Environment
         env:
-            GIT_SHA: ${{ github.sha}}
+            FULL_SHA: ${{ github.sha }}
         run: |
-          helm upgrade --install dev-url-shortener ./url-shortener/url-shortener  --namespace staging --set image.tag=${GIT_SHA::7}
-
-      # - name: Pull latest images
-      #   env:
-      #     GIT_SHA: ${{ github.sha }}
-      #   run: |
-      #     docker pull ghcr.io/sammyqtran/url-service:${GIT_SHA::7}
-      #     docker pull ghcr.io/sammyqtran/gateway-service:${GIT_SHA::7}
-      #     docker pull ghcr.io/sammyqtran/analytics-service:${GIT_SHA::7}
-
-      # - name: Rollout deployments
-      #   run: |
-      #     kubectl rollout restart deployment/dev-url-shortener-url-service -n default
-      #     kubectl rollout restart deployment/dev-url-shortener-gateway-service -n default
-      #     kubectl rollout restart deployment/dev-url-shortener-analytics-service -n default
+            GIT_SHA=${FULL_SHA::7}      
+            helm upgrade --install dev-url-shortener ./url-shortener \
+            --namespace default \
+            --values ./url-shortener/values.yaml \
+            --set urlService.image.tag=$GIT_SHA \
+            --set gatewayService.image.tag=$GIT_SHA \
+            --set analyticsService.image.tag=$GIT_SHA
 
       - name: Wait for deployments to be ready
         run: |
@@ -66,5 +58,13 @@ jobs:
           done
       
       - name: Upgrade to Production
+        env:
+          FULL_SHA: ${{ github.sha }}
         run: |
-          helm upgrade dev-url-shortener ./
+            GIT_SHA=${FULL_SHA::7} 
+            helm upgrade --install prod-url-shortener ./url-shortener \
+            --namespace production \
+            --values ./url-shortener/prodvalues.yaml \
+            --set urlService.image.tag=$GIT_SHA \
+            --set gatewayService.image.tag=$GIT_SHA \
+            --set analyticsService.image.tag=$GIT_SHA
