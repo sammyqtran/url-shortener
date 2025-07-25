@@ -20,6 +20,11 @@ jobs:
         with:
           version: 'latest'
       
+      - name: Debug branch info
+        run: |
+          echo "Head branch: ${{ github.event.workflow_run.head_branch }}"
+          echo "Event: ${{ github.event.workflow_run.event }}"
+
       - name: Deploying to Staging Environment
         env:
             FULL_SHA: ${{ github.sha }}
